@@ -15,7 +15,9 @@ desarrolla de forma incremental, añadiendo capacidades por fases.
 | Java Modules (JPMS) | — | Aísla los hexágonos y fuerza la inversión de dependencias |
 | Lombok | 1.18.34 | Reduce boilerplate en el modelo de dominio |
 | JUnit 5 | 5.11.x | Tests |
+| Cucumber | 7.20.x | Tests de aceptación (BDD) sobre JUnit 5 Platform |
 | Quarkus | 3.x (LTS) | Runtime cloud-native *(fase futura)* |
+
 
 ## Arquitectura
 
@@ -37,7 +39,7 @@ framework.
 | Módulo (JPMS) | Hexágono | Responsabilidad |
 |---------------|----------|-----------------|
 | `domain` | Domain | Entities, value objects, domain services y specifications |
-| `application` | Application | Use cases e input/output ports *(pendiente)* |
+| `application` | Application | Use cases e input/output ports |
 | `framework` | Framework | Input/output adapters *(pendiente)* |
 | `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación *(pendiente)* |
 
@@ -71,14 +73,14 @@ cloud-native.)*
 
 | Fase | Incremento | Estado |
 |------|------------|--------|
-| 1 | Modelo de dominio (entities, value objects, reglas de negocio) | ✅ |
-| 2 | Casos de uso y puertos (capa de aplicación) | ⏸️ |
-| 3 | Adapters y frontera tecnológica (capa de framework) | ⏸️ |
-| 4 | Inversión de dependencias entre módulos (JPMS) | ⏸️ |
-| 5 | Integración cloud-native con Quarkus | ⏸️ |
-| 6 | Gestión del ciclo de vida con CDI | ⏸️ |
-| 7 | API REST reactiva | ⏸️ |
-| 8 | Persistencia reactiva | ⏸️ |
-| 9 | Contenedores y despliegue (Docker / Kubernetes) | ⏸️ |
-| 10 | Endurecimiento y buenas prácticas | ⏸️ |
+| 1 | Modelo de dominio (entities, value objects, reglas de negocio) | ✅     |
+| 2 | Casos de uso y puertos (capa de aplicación) | ✅     |
+| 3 | Adapters y frontera tecnológica (capa de framework) | ⏸️      |
+| 4 | Inversión de dependencias entre módulos (JPMS) | ⏸️      |
+| 5 | Integración cloud-native con Quarkus | ⏸️      |
+| 6 | Gestión del ciclo de vida con CDI | ⏸️      |
+| 7 | API REST reactiva | ⏸️      |
+| 8 | Persistencia reactiva | ⏸️      |
+| 9 | Contenedores y despliegue (Docker / Kubernetes) | ⏸️      |
+| 10 | Endurecimiento y buenas prácticas | ⏸️      |
 
