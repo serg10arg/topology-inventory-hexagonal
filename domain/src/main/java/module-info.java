@@ -11,6 +11,7 @@
  */
 module domain {
     exports com.example.topologyinventory.domain.entity;
+    exports com.example.topologyinventory.domain.entity.factory;
     exports com.example.topologyinventory.domain.service;
     exports com.example.topologyinventory.domain.specification;
     exports com.example.topologyinventory.domain.vo;

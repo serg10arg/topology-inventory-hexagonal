@@ -41,16 +41,17 @@ public class CoreRouter extends Router {
      * compartir IP con este core router ({@link SameIpSpec}).
      *
      * @param anyRouter router a conectar
-     * @return el router previamente asociado a ese Id, o {@code null} si no había ninguno
+     * @return este mismo {@link CoreRouter} (raíz del agregado) con el router ya incorporado
      */
-    public Router addRouter(Router anyRouter) {
+    public CoreRouter addRouter(Router anyRouter) {
         var sameCountryRouterSpec = new SameCountrySpec(this);
         var sameIpSpec = new SameIpSpec(this);
 
         sameCountryRouterSpec.check(anyRouter);
         sameIpSpec.check(anyRouter);
 
-        return this.routers.put(anyRouter.id, anyRouter);
+        this.routers.put(anyRouter.id, anyRouter);
+        return this;                    // antes devolvía el valor previo de put(...) (Router)
     }
 
     /**
