@@ -23,6 +23,23 @@
         <surefire-plugin.version>3.5.2</surefire-plugin.version>
     </properties>
 
+    <!--
+     ~ Gestión centralizada de versiones. El BOM de JUnit alinea por construcción
+     ~ junit-jupiter (5.x) con junit-platform (1.x), que llevan numeración distinta:
+     ~ importarlo evita tener que recordar qué platform pareja con qué jupiter.
+     -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.projectlombok</groupId>
