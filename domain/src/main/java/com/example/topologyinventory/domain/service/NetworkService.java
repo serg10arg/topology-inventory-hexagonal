@@ -26,4 +26,12 @@ public class NetworkService {
                 .filter(networkPredicate)
                 .collect(Collectors.toList());
     }
+
+    /** Devuelve la primera red que cumple el predicado, o [@code null} si no hay ninguna. */
+    public static Network findNetwork(List<Network> networks, Predicate<Network> networkPredicate) {
+        return networks.stream()
+                .filter(networkPredicate)
+                .findFirst()
+                .orElse(null);
+    }
 }

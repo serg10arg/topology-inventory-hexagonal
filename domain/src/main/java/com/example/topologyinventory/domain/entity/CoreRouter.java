@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -32,7 +33,8 @@ public class CoreRouter extends Router {
     public CoreRouter(Id id, Vendor vendor, Model model, IP ip, Location location,
                       RouterType routerType, Map<Id, Router> routers) {
         super(id, vendor, model, ip, location, routerType);
-        this.routers = routers;
+        // Un router recién creado por la fábrica llega sin mapa: se parte de uno vacío y mutable.
+        this.routers = routers == null ? new HashMap<>() : routers;
     }
 
     /**

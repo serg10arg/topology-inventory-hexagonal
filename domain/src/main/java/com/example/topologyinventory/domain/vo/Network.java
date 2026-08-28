@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import java.util.function.Predicate;
 
 @Builder
 @Getter
@@ -21,5 +22,10 @@ public class Network {
         this.networkAddress = networkAddress;
         this.networkName = networkName;
         this.networkCidr = networkCidr;
+    }
+
+    /** Predicado para localizar una red por su nombre. */
+    public static Predicate<Network> getNetworkNamePredicate(String name) {
+        return network -> network.getNetworkName().equals(name);
     }
 }

@@ -13,6 +13,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -31,7 +32,8 @@ public class EdgeRouter extends Router {
     public EdgeRouter(Id id, Vendor vendor, Model model, IP ip, Location location,
                       RouterType routerType, Map<Id, Switch> switches) {
         super(id, vendor, model, ip, location, routerType);
-        this.switches = switches;
+        // Un router recién creado por la fábrica llega sin mapa: se parte de uno vacío y mutable.
+        this.switches = switches == null ? new HashMap<>() : switches;
     }
 
     /**
