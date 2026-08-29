@@ -12,6 +12,7 @@
     <modules>
         <module>domain</module>
         <module>application</module>
+        <module>framework</module>
     </modules>
 
     <properties>
@@ -21,6 +22,9 @@
         <junit.version>5.11.3</junit.version>
         <compiler-plugin.version>3.13.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.2</surefire-plugin.version>
+        <jakarta.persistence.version>3.1.0</jakarta.persistence.version>
+        <eclipselink.version>4.0.4</eclipselink.version>
+        <h2.version>2.2.224</h2.version>
     </properties>
 
     <!--
@@ -36,6 +40,21 @@
                 <version>${junit.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.persistence</groupId>
+                <artifactId>jakarta.persistence-api</artifactId>
+                <version>${jakarta.persistence.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.persistence</groupId>
+                <artifactId>org.eclipse.persistence.jpa</artifactId>
+                <version>${eclipselink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
