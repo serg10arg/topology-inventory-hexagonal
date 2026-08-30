@@ -14,9 +14,13 @@ desarrolla de forma incremental, añadiendo capacidades por fases.
 | Maven | 3.9.x | Build multi-módulo |
 | Java Modules (JPMS) | — | Aísla los hexágonos y fuerza la inversión de dependencias |
 | Lombok | 1.18.34 | Reduce boilerplate en el modelo de dominio |
+| Jakarta Persistence (JPA) | 3.1 | API de persistencia (frontera de salida) |
+| EclipseLink | 4.0.4 | Proveedor JPA |
+| H2 | 2.2.224 | Base de datos en memoria (frontera de salida) |
 | JUnit 5 | 5.11.x | Tests |
 | Cucumber | 7.20.x | Tests de aceptación (BDD) sobre JUnit 5 Platform |
 | Quarkus | 3.x (LTS) | Runtime cloud-native *(fase futura)* |
+
 
 
 ## Arquitectura
@@ -40,7 +44,7 @@ framework.
 |---------------|----------|-----------------|
 | `domain` | Domain | Entities, value objects, domain services y specifications |
 | `application` | Application | Use cases e input/output ports |
-| `framework` | Framework | Input/output adapters *(pendiente)* |
+| `framework` | Framework | Input/output adapters: persistencia H2/JPA (salida) y adapters genéricos de entrada |
 | `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación *(pendiente)* |
 
 ## Decisiones técnicas
@@ -52,6 +56,8 @@ framework.
   componibles y testables de forma aislada, en lugar de condicionales dispersos.
 - **Jakarta EE 10 (`jakarta.*`)** como base del stack empresarial *(desde la fase
   de integración cloud-native)*.
+- **EclipseLink + H2** como proveedor JPA y base de datos en memoria en la
+    frontera de salida, aislados del dominio mediante mappers.
 - **Quarkus 3.x** por su arranque rápido y su enfoque cloud-native.
 
 ## Ejecución
@@ -75,7 +81,7 @@ cloud-native.)*
 |------|------------|--------|
 | 1 | Modelo de dominio (entities, value objects, reglas de negocio) | ✅     |
 | 2 | Casos de uso y puertos (capa de aplicación) | ✅     |
-| 3 | Adapters y frontera tecnológica (capa de framework) | ⏸️      |
+| 3 | Adapters y frontera tecnológica (capa de framework) | 🚧     |
 | 4 | Inversión de dependencias entre módulos (JPMS) | ⏸️      |
 | 5 | Integración cloud-native con Quarkus | ⏸️      |
 | 6 | Gestión del ciclo de vida con CDI | ⏸️      |
