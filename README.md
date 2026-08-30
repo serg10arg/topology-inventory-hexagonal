@@ -25,7 +25,7 @@ desarrolla de forma incremental, añadiendo capacidades por fases.
 
 ## Arquitectura
 
-![Arquitectura hexagonal](docs/images/hexagonal-architecture.png)
+![Arquitectura hexagonal](docs/images/the-hexagonal-architecture.png)
 
 El sistema se organiza en tres hexágonos concéntricos. Una petición entra por el
 **Framework hexagon** a través de un *input adapter* (REST, gRPC…), que la
