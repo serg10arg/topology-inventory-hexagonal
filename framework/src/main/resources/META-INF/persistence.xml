@@ -13,11 +13,23 @@
         <properties>
             <property name="jakarta.persistence.jdbc.driver" value="org.h2.Driver"/>
             <property name="jakarta.persistence.jdbc.url"
-                      value="jdbc:h2:mem:inventory;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;IGNORECASE=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS inventory\;RUNSCRIPT FROM 'classpath:inventory.sql'"/>
+                      value="jdbc:h2:mem:inventory;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;IGNORECASE=TRUE"/>
             <property name="eclipselink.target-database" value="org.eclipse.persistence.platform.database.H2Platform"/>
-            <property name="eclipselink.ddl-generation.output-mode" value="both"/>
             <property name="eclipselink.logging.level" value="info"/>
-            <property name="jakarta.persistence.schema-generation.scripts.action" value="drop-and-create"/>
+
+            <!--
+             ~ El esquema y los datos los aporta EclipseLink desde scripts, una sola
+             ~ vez al desplegar la unidad. 'create-source=script' hace que EclipseLink
+             ~ NO genere DDL desde las entidades: schema.sql (escrito a mano) sigue
+             ~ siendo la autoridad del esquema. Se sustituye así el antiguo
+             ~ 'INIT=...RUNSCRIPT' de la URL (que re-creaba las tablas en cada
+             ~ conexión) y se elimina 'schema-generation.scripts.action' (que exigía
+             ~ un create-target y provocaba el fallo de despliegue).
+             -->
+            <property name="jakarta.persistence.schema-generation.database.action" value="create"/>
+            <property name="jakarta.persistence.schema-generation.create-source" value="script"/>
+            <property name="jakarta.persistence.schema-generation.create-script-source" value="schema.sql"/>
+            <property name="jakarta.persistence.sql-load-script-source" value="data.sql"/>
         </properties>
     </persistence-unit>
 </persistence>
