@@ -42,7 +42,20 @@ public class RouterManagementH2Adapter implements RouterManagementOutputPort {
     @Override
     public Router persistRouter(Router router) {
         var routerData = RouterH2Mapper.routerDomainToData(router);
-        em.persist(routerData);
+        // Fuera de un contenedor Jakarta EE, con una unidad de persistencia
+        // RESOURCE_LOCAL la transacción es manual: sin begin/commit, em.persist
+        // no confirma nada en la base de datos.
+        var transaction = em.getTransaction();
+        transaction.begin();
+        try {
+            em.persist(routerData);
+            transaction.commit();
+        } catch (RuntimeException e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw e;
+        }
         return router;
     }
 
@@ -63,5 +76,17 @@ public class RouterManagementH2Adapter implements RouterManagementOutputPort {
             instance = new RouterManagementH2Adapter();
         }
         return instance;
+    }
+
+    /**
+     * Punto de entrada para {@link java.util.ServiceLoader}. El sistema de módulos
+     * instancia el proveedor de un servicio mediante un constructor público sin
+     * argumentos <em>o</em> un método estático público {@code provider()}. Como
+     * esta clase es un singleton con constructor privado, exponemos {@code provider()}
+     * para que ServiceLoader reutilice la instancia de {@link #getInstance()} sin
+     * abrir el constructor.
+     */
+    public static RouterManagementH2Adapter provider() {
+        return getInstance();
     }
 }

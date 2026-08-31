@@ -15,6 +15,15 @@
  * - 'exports ...output.h2.data': hace visibles los tipos de persistencia a
  *   otros módulos del reactor (p. ej. los tests de integración).
  *
+ * Provisión de servicio (inversión de dependencias vía JPMS):
+ * - 'provides ...RouterManagementOutputPort with ...RouterManagementH2Adapter':
+ *   declara que la interfaz de salida definida por el hexágono de application
+ *   queda implementada por el output adapter de H2. Es la mitad "oferta" del
+ *   binding; la mitad "demanda" ('uses') vive en el módulo application, que es
+ *   quien resuelve el port con ServiceLoader. No hace falta 'exports' del
+ *   paquete del adapter: 'provides' ya concede a ServiceLoader el permiso de
+ *   instanciar la clase manteniendo el paquete oculto.
+ *
  * Nota: los 'requires' de Jackson y los adapters de entrada se añadirán cuando
  * esas piezas existan, para no arrastrar dependencias sin uso.
  */
@@ -28,4 +37,7 @@ module framework {
 
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;
+
+    provides com.example.topologyinventory.application.ports.output.RouterManagementOutputPort
+            with com.example.topologyinventory.framework.adapters.output.h2.RouterManagementH2Adapter;
 }
