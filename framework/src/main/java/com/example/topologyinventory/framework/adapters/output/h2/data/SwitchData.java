@@ -69,7 +69,22 @@ public class SwitchData implements Serializable {
     })
     private IPData ip;
 
-    @ManyToOne
-    @JoinColumn(name = "location_id")
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "address",
+                    column = @Column(name = "location_address")),
+            @AttributeOverride(name = "city",
+                    column = @Column(name = "location_city")),
+            @AttributeOverride(name = "state",
+                    column = @Column(name = "location_state")),
+            @AttributeOverride(name = "zipcode",
+                    column = @Column(name = "location_zipcode")),
+            @AttributeOverride(name = "country",
+                    column = @Column(name = "location_country")),
+            @AttributeOverride(name = "latitude",
+                    column = @Column(name = "location_latitude")),
+            @AttributeOverride(name = "longitude",
+                    column = @Column(name = "location_longitude")),
+    })
     private LocationData switchLocation;
 }

@@ -8,7 +8,6 @@
         <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
         <class>com.example.topologyinventory.framework.adapters.output.h2.data.RouterData</class>
         <class>com.example.topologyinventory.framework.adapters.output.h2.data.SwitchData</class>
-        <class>com.example.topologyinventory.framework.adapters.output.h2.data.LocationData</class>
         <exclude-unlisted-classes>false</exclude-unlisted-classes>
         <properties>
             <property name="jakarta.persistence.jdbc.driver" value="org.h2.Driver"/>

@@ -3,7 +3,6 @@ package com.example.topologyinventory.framework.adapters.output.h2;
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.entity.factory.RouterFactory;
 import com.example.topologyinventory.domain.vo.*;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -50,16 +49,11 @@ class RouterManagementH2AdapterTest {
         assertEquals(RouterType.EDGE, router.getRouterType());
         assertEquals(Vendor.JUNIPER, router.getVendor());
         assertEquals(Model.XYZ0001, router.getModel());
-        // Prueba de que el @ManyToOne a Location resolvió contra la fila semilla.
+        // Prueba de que las columnas @Embedded de Location se leyeron de la fila semilla.
         assertEquals("Tully", router.getLocation().getCity());
     }
 
     @Test
-    @Disabled("Hallazgo de mapeo pendiente: RouterH2Mapper no asigna locationId, y el "
-            + "@ManyToOne a LocationData no tiene cascade PERSIST, de modo que persistir "
-            + "un router nuevo con una Location transitoria lanza 'new object found ... "
-            + "not marked cascade PERSIST'. Se reactiva al resolver el mapeo de Location "
-            + "en un sub-commit correctivo (cascade / resolver existente / @Embedded).")
     @DisplayName("persistRouter confirma la transacción sin lanzar")
     void persistNewCoreRouter_shouldCommitWithoutError() {
         var adapter = RouterManagementH2Adapter.getInstance();
