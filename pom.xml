@@ -26,12 +26,34 @@
         <jakarta.persistence.version>3.1.0</jakarta.persistence.version>
         <eclipselink.version>4.0.4</eclipselink.version>
         <h2.version>2.2.224</h2.version>
+
+        <!--
+         ~ Plataforma Quarkus. Se fija la LTS vigente, recomendada para produccion.
+         ~ El BOM 'quarkus-bom' (importado abajo) alinea por construccion las
+         ~ versiones de todas las extensiones Quarkus, igual que 'junit-bom' alinea
+         ~ jupiter con platform. Sustituye al antiguo 'quarkus-universe-bom' del
+         ~ libro (discontinuado tras Quarkus 2.x).
+         -->
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.version>3.33.2.1</quarkus.platform.version>
+
+        <!--
+         ~ Plugin Jandex: genera el indice de clases (META-INF/jandex.idx) de cada
+         ~ modulo. Necesario porque los @Entity (y, mas adelante, los CDI beans)
+         ~ viven en jars separados (framework, application) que Quarkus NO indexa
+         ~ automaticamente: solo indexa el modulo que arranca el motor (bootstrap).
+         ~ Coordenada modernizada respecto al libro: 'org.jboss.jandex' paso a
+         ~ 'io.smallrye' en el ecosistema Quarkus 3.x.
+         -->
+        <jandex-plugin.version>3.5.3</jandex-plugin.version>
     </properties>
 
     <!--
      ~ Gestión centralizada de versiones. El BOM de JUnit alinea por construcción
      ~ junit-jupiter (5.x) con junit-platform (1.x), que llevan numeración distinta:
-     ~ importarlo evita tener que recordar qué platform pareja con qué jupiter.
+     ~ importarlo evita tener que recordar qué platform pareja con qué jupiter. El
+     ~ BOM de Quarkus cumple el mismo papel para las extensiones Quarkus.
      -->
     <dependencyManagement>
         <dependencies>
@@ -39,6 +61,19 @@
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
                 <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!--
+             ~ BOM de la plataforma Quarkus. No trae ninguna extension al classpath
+             ~ por si mismo: solo pone a disposicion versiones coherentes. Las
+             ~ extensiones (p. ej. quarkus-arc) se declaran SIN <version> alli donde
+             ~ se necesiten; el BOM la resuelve.
+             -->
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -100,6 +135,26 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${surefire-plugin.version}</version>
+            </plugin>
+            <!--
+             ~ Indexado Jandex para TODO el reactor. En modulos con clases (domain,
+             ~ application, framework) el goal 'jandex' se engancha a 'process-classes'
+             ~ y deja META-INF/jandex.idx dentro del jar; en el modulo padre
+             ~ (packaging pom) y en bootstrap es inofensivo. Sin este indice, la
+             ~ augmentation de Quarkus no descubriria las entidades de otros modulos.
+             -->
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+                <version>${jandex-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>make-index</id>
+                        <goals>
+                            <goal>jandex</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

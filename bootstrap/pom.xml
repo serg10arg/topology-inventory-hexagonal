@@ -34,6 +34,45 @@
             <artifactId>domain</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!--
+         ~ Extension base de Quarkus: ARC, el contenedor CDI resuelto en build-time.
+         ~ En SC1 solo se instala (aun no hay beans propios); en SC2 el output
+         ~ adapter le pedira el EntityManager gestionado. La version la aporta el
+         ~ quarkus-bom importado en el POM raiz.
+         -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+             ~ quarkus-maven-plugin: hace de 'bootstrap' el modulo que arranca el
+             ~ motor Quarkus. El goal 'build' ejecuta la augmentation en build-time
+             ~ (descubre entidades/beans via indices Jandex y genera el artefacto
+             ~ ejecutable); 'generate-code' habilita la generacion de fuentes de las
+             ~ extensiones. <extensions>true</extensions> activa el ciclo de vida
+             ~ que Quarkus aporta al build.
+             -->
+            <plugin>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
