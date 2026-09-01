@@ -27,9 +27,10 @@ Un adapter por cada caso de uso de la aplicación.
   enchufa por fuera.
 - **Para reflejar el contrato de la aplicación uno a uno.** Cada adapter delega en
   su caso de uso con las mismas firmas: no añade reglas ni orquestación oculta.
-- **Para preparar el terreno de la persistencia sin adelantarla.** La recuperación
-  y el guardado dependen del puerto de salida, que se cablea en la fase de
-  inyección de dependencias; por eso aquí quedan declarados pero inactivos.
+- **Para mantener la persistencia fuera de la vista del adapter.** La recuperación
+  y el guardado se delegan igual que el resto: el puerto de salida lo resuelve el
+  application service por `ServiceLoader`, así que este adapter no sabe qué hay al
+  otro lado.
 
 ## ¿Cómo se implementó?
 
@@ -38,8 +39,9 @@ Un adapter por cada caso de uso de la aplicación.
   uso.
 - Los métodos llevan en su Javadoc el **endpoint REST** que representarán, como guía
   para el adapter web futuro.
-- El cableado del **puerto de salida** (para `retrieveRouter`/`persistRouter`) se
-  hará mediante JPMS `provides/uses` en la fase de inyección de dependencias.
+- El **puerto de salida** (para `retrieveRouter`/`persistRouter`) queda cableado
+  por JPMS `provides`/`uses`: ambos métodos son operativos siempre que el módulo
+  `framework` esté en el grafo de módulos en ejecución.
 
 ## ¿Cuál es su responsabilidad?
 

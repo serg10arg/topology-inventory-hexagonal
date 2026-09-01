@@ -22,7 +22,7 @@ base de datos.
 | **Output adapter** | La implementación concreta de un puerto de salida sobre una tecnología. | `RouterManagementH2Adapter` |
 | **Modelo de persistencia** | Clases espejo orientadas a la base de datos, sin lógica de negocio. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData`, `IPData`, los enums `*Data`, `UUIDTypeConverter` |
 | **Mapper** | El traductor entre las entidades del dominio y su espejo de persistencia. | `RouterH2Mapper` |
-| **Configuración de persistencia** | La unidad JPA y los datos iniciales de arranque. | `persistence.xml`, `inventory.sql` |
+| **Configuración de persistencia** | La unidad JPA, el esquema y los datos iniciales de arranque. | `persistence.xml`, `schema.sql`, `data.sql` |
 
 ## ¿Por qué se implementó así?
 
@@ -75,11 +75,18 @@ concreto de lo que la aplicación pide, sin contener reglas ni orquestación.
 
 ## Estado actual
 
-El **lado de salida está implementado**: el puerto de persistencia del router
-queda enchufado sobre H2 con JPA, con su mapper y sus datos iniciales, y el módulo
-compila. Los **adapters de entrada** (*driving*), que cablearán estos puertos a los
-casos de uso de la aplicación, se implementarán en la siguiente etapa. Las pruebas
-de integración del hexágono llegarán después de ese cableado.
+Los **dos lados están implementados y verificados**. El de salida enchufa el
+puerto de persistencia del router sobre H2 con JPA y se ofrece como **servicio
+JPMS** (`provides`), de modo que el hexágono de aplicación lo resuelve por
+`ServiceLoader` sin conocerlo. El de entrada son los generic adapters, hoy POJOs y
+mañana la base del adapter REST, con `retrieveRouter`/`persistRouter` ya
+operativos.
+
+Las pruebas del módulo (5) cubren la integración del output adapter contra H2 y el
+recorrido end-to-end por los generic adapters. **Deuda conocida:** los `@OneToMany`
+del modelo de persistencia no cascadan, así que todavía no se guarda el agregado
+con sus hijos; y el cableado sigue siendo manual (singleton), lo que sustituirá
+CDI más adelante.
 
 ## ¿Cómo se relaciona con el proyecto?
 

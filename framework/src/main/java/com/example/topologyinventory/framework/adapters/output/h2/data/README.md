@@ -17,8 +17,8 @@ Las clases que definen cómo se guarda cada concepto del dominio en la base de d
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
-| **Entidades JPA** (`@Entity`) | Clases que se mapean a una tabla; cada instancia es una fila. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData` |
-| **Value objects incrustados** (`@Embeddable`) | Tipos cuyas columnas se incrustan en la tabla de la entidad que los contiene. | `IPData`, y los enums `VendorData`, `ModelData`, `ProtocolData`, `RouterTypeData`, `SwitchTypeData` |
+| **Entidades JPA** (`@Entity`) | Clases que se mapean a una tabla; cada instancia es una fila. | `RouterData`, `SwitchData`, `NetworkData` |
+| **Value objects incrustados** (`@Embeddable`) | Tipos cuyas columnas se incrustan en la tabla de la entidad que los contiene. | `LocationData`, `IPData`, y los enums `VendorData`, `ModelData`, `ProtocolData`, `RouterTypeData`, `SwitchTypeData` |
 | **Converter** | Traduce un tipo Java a/desde su representación en columna. | `UUIDTypeConverter` (mapea `UUID` ↔ columna `UUID` de H2) |
 
 ## ¿Por qué se implementó así?
@@ -45,8 +45,8 @@ Las clases que definen cómo se guarda cada concepto del dominio en la base de d
 |---|---|
 | `@Entity` / `@Table` | Declara una tabla y su nombre |
 | `@Id` / `@Column` | Clave primaria y columnas |
-| `@Embeddable` / `@Embedded` | Tipos incrustados (IP, enums) |
-| `@OneToMany` / `@ManyToOne` | Relaciones entre tablas |
+| `@Embeddable` / `@Embedded` | Tipos incrustados (Location, IP, enums) |
+| `@OneToMany` | Relaciones del agregado router (routers hijos, switches, redes) |
 | `@Convert` / `@Converter` | Conversión de tipos (UUID) |
 
 ## ¿Cuál es su responsabilidad?

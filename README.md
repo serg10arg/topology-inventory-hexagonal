@@ -45,7 +45,7 @@ framework.
 | `domain` | Domain | Entities, value objects, domain services y specifications |
 | `application` | Application | Use cases e input/output ports |
 | `framework` | Framework | Input/output adapters: persistencia H2/JPA (salida) y adapters genéricos de entrada |
-| `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación *(pendiente)* |
+| `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación |
 
 ## Decisiones técnicas
 
@@ -70,6 +70,7 @@ mvn clean verify
 
 # Solo el módulo de dominio
 mvn -pl domain test
+
 ```
 
 *(Los comandos de Quarkus dev/build/run se añadirán en la fase de integración
@@ -81,8 +82,8 @@ cloud-native.)*
 |------|------------|--------|
 | 1 | Modelo de dominio (entities, value objects, reglas de negocio) | ✅     |
 | 2 | Casos de uso y puertos (capa de aplicación) | ✅     |
-| 3 | Adapters y frontera tecnológica (capa de framework) | 🚧     |
-| 4 | Inversión de dependencias entre módulos (JPMS) | ⏸️      |
+| 3 | Adapters y frontera tecnológica (capa de framework) | ✅     |
+| 4 | Inversión de dependencias entre módulos (JPMS) | ✅     |
 | 5 | Integración cloud-native con Quarkus | ⏸️      |
 | 6 | Gestión del ciclo de vida con CDI | ⏸️      |
 | 7 | API REST reactiva | ⏸️      |

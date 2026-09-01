@@ -65,12 +65,17 @@ dominio y delegar el trabajo técnico a través de los puertos.
 
 ## Estado actual
 
-El catálogo de operaciones y los puertos están definidos y el módulo compila de
-forma aislada. El **puerto de salida** (persistencia) queda declarado como punto
-de conexión, pero **todavía no está enchufado**: será el futuro módulo de
-infraestructura quien aporte su implementación. Por eso, de momento, las
-operaciones que no requieren guardar datos (crear, conectar y desconectar) son
-las que se ejercitan en las pruebas.
+El catálogo de operaciones y los puertos están definidos, y el **puerto de
+salida** (persistencia) **ya está enchufado**: este módulo declara `uses` en su
+`module-info` y `RouterManagementInputPort` resuelve la implementación con
+`ServiceLoader` la primera vez que hace falta; la aporta el módulo `framework`
+con su `provides`. La resolución es perezosa a propósito —crear, conectar y
+desconectar no arrastran el arranque de la base de datos— y el núcleo sigue sin
+conocer la clase concreta del adapter.
+
+Las pruebas de este módulo (Cucumber) siguen ejercitando solo las operaciones en
+memoria: sin `framework` en su grafo de módulos no hay proveedor que cargar, y
+así debe ser. El camino con persistencia se verifica desde `framework`.
 
 ## ¿Cómo se relaciona con el proyecto?
 
