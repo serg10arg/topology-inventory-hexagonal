@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>topology-inventory</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>bootstrap</artifactId>
+
+    <dependencies>
+        <!--
+         ~ Raíz de composición: el bootstrap se apoya en los tres hexágonos.
+         ~ Al depender de 'framework' llegan transitivamente EclipseLink y H2, que
+         ~ el output adapter necesita en tiempo de ejecución. Se declaran también
+         ~ 'application' y 'domain' de forma explícita porque el 'module-info' los
+         ~ 'requires' directamente (legibilidad, no solo resolución transitiva).
+         -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>framework</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>application</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+</project>

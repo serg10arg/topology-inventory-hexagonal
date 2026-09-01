@@ -38,6 +38,8 @@ module framework {
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;
 
+    exports com.example.topologyinventory.framework.adapters.input.generic;
+
     provides com.example.topologyinventory.application.ports.output.RouterManagementOutputPort
             with com.example.topologyinventory.framework.adapters.output.h2.RouterManagementH2Adapter;
 }

@@ -13,6 +13,7 @@
         <module>domain</module>
         <module>application</module>
         <module>framework</module>
+        <module>bootstrap</module>
     </modules>
 
     <properties>
