@@ -10,25 +10,22 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test end-to-end del lado <em>driving</em>: entra por los generic adapters (la
- * "puerta de entrada" del sistema, base del futuro adapter REST) y recorre la
- * jerarquía completa del agregado —core → edge → switch → red— más el camino de
- * persistencia, que atraviesa los tres hexágonos: adapter de entrada → use case →
- * puerto de salida resuelto por {@code ServiceLoader} → output adapter de H2.
+ * "puerta de entrada" del sistema, base del futuro adapter REST) y recorre dos
+ * caminos completos —la jerarquía del agregado en memoria y la persistencia, que
+ * atraviesa los tres hexágonos: adapter de entrada → use case → puerto de salida
+ * resuelto por {@code ServiceLoader} → output adapter de H2—. Que el
+ * {@code ServiceLoader} resuelva aquí prueba que el binding JPMS
+ * {@code provides}/{@code uses} funciona sin que el hexágono de application
+ * conozca la clase concreta.
  *
  * <p>Los fixtures respetan las reglas de dominio (specifications): misma
  * ubicación (mismo país) en toda la cadena, IPs distintas entre core, edge y
  * switch, y un CIDR válido (&gt;= 8) para la red. Un dato que violara una regla
  * haría fallar el test por el motivo equivocado.
- *
- * <p>Sobre el paso de persistencia: no se hace round-trip de un router recién
- * persistido, por la misma razón documentada en {@code RouterManagementH2AdapterTest}
- * —el mapper no asigna {@code locationId}, así que releerlo fallaría al resolver la
- * ubicación—. Escritura y lectura se ejercitan por separado: se persiste un router
- * nuevo y se recupera uno semilla.
  */
 class GenericAdaptersEndToEndTest {
 
-    /** EDGE router semilla insertado por inventory.sql. */
+    /** EDGE router semilla insertado por data.sql (no lo escribe ningún test). */
     private static final String SEEDED_EDGE_ROUTER_ID = "b832ef4f-f894-4194-8feb-a99c2cd4be0a";
 
     private static final Location LOCATION = Location.builder()
@@ -69,9 +66,22 @@ class GenericAdaptersEndToEndTest {
                 "el switch debería tener 1 red conectada");
     }
 
+    /**
+     * Round-trip por el adapter de entrada: persistir un router nuevo y volver a
+     * recuperarlo. Posible desde que {@code LocationData} pasó a ser
+     * {@code @Embeddable}: mientras la ubicación fue una entidad con PK propia,
+     * un router recién persistido quedaba sin {@code location_id} válido y
+     * releerlo fallaba.
+     *
+     * <p>El output adapter es un singleton con un único {@code EntityManager}, así
+     * que esta lectura puede servirse de su caché de primer nivel. Eso está bien
+     * para lo que este test afirma —el ida y vuelta por la puerta de entrada— y no
+     * lo invalida: la lectura contra disco la cubre {@link #retrieveSeededRouter()},
+     * que pide un router que ningún test ha escrito.
+     */
     @Test
-    @DisplayName("e2e: el adapter de entrada persiste vía el puerto de salida (ServiceLoader)")
-    void persistRouterThroughOutputPort() {
+    @DisplayName("e2e: persistir y recuperar un router por el adapter de entrada")
+    void persistAndRetrieveRouter() {
         var routerAdapter = new RouterManagementGenericAdapter();
 
         var core = routerAdapter.createRouter(
@@ -80,11 +90,22 @@ class GenericAdaptersEndToEndTest {
 
         assertDoesNotThrow(() -> routerAdapter.persistRouter(core),
                 "persistir por el adapter debería resolver el puerto de salida y confirmar");
+
+        var retrieved = routerAdapter.retrieveRouter(core.getId());
+        assertNotNull(retrieved, "el router persistido debería recuperarse");
+        assertEquals(core.getId(), retrieved.getId());
+        assertEquals(RouterType.CORE, retrieved.getRouterType());
+        assertEquals("Tully", retrieved.getLocation().getCity());
     }
 
+    /**
+     * Lectura real desde H2 por la puerta de entrada: el router semilla no lo ha
+     * escrito ningún test, así que no puede venir de la caché del
+     * {@code EntityManager}.
+     */
     @Test
-    @DisplayName("e2e: el adapter de entrada recupera un router semilla vía el puerto de salida")
-    void retrieveSeededRouterThroughOutputPort() {
+    @DisplayName("e2e: recuperar un router semilla por el adapter de entrada")
+    void retrieveSeededRouter() {
         var routerAdapter = new RouterManagementGenericAdapter();
 
         var retrieved = routerAdapter.retrieveRouter(Id.withId(SEEDED_EDGE_ROUTER_ID));

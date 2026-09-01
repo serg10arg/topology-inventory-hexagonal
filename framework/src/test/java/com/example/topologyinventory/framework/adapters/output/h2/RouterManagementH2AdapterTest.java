@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Test de integración del output adapter de persistencia. Es la primera vez que
  * el sistema arranca EclipseLink de verdad y habla con la base de datos H2
- * (unidad de persistencia "inventory", cargada con esquema y datos semilla desde
- * {@code inventory.sql}).
+ * (unidad de persistencia "inventory", cargada con el esquema de
+ * {@code schema.sql} y los datos semilla de {@code data.sql}).
  *
  * <p>El adapter es un singleton con un único {@code EntityManager}, así que su
  * caché de primer nivel podría servir una lectura sin tocar disco. Para evitar
@@ -25,16 +25,14 @@ import static org.junit.jupiter.api.Assertions.*;
  *       transacción {@code RESOURCE_LOCAL} confirma sin lanzar.</li>
  * </ul>
  *
- * <p>Nota deliberada: no se hace un round-trip de un mismo router recién creado.
- * El {@code RouterH2Mapper} no asigna {@code locationId} al convertir dominio→data,
- * de modo que un router persistido queda con {@code location_id = 0}, que no existe
- * en la tabla {@code location}; releerlo fallaría al resolver el {@code @ManyToOne}
- * eager de la ubicación. Esa laguna del mapper queda registrada como hallazgo de
- * esta fase, no se enmascara con un test que la esquive por casualidad.
+ * <p>Nota: aquí no se hace round-trip de un mismo router porque estos dos tests
+ * existen justamente para separar los caminos. El ida y vuelta completo —posible
+ * desde que {@code LocationData} es {@code @Embeddable}— lo cubre el test
+ * end-to-end de los generic adapters.
  */
 class RouterManagementH2AdapterTest {
 
-    /** CORE router semilla insertado por inventory.sql (JUNIPER/CISCO, ubicación 1). */
+    /** EDGE router semilla insertado por data.sql (JUNIPER/XYZ0001, ubicación en Tully). */
     private static final String SEEDED_EDGE_ROUTER_ID = "b832ef4f-f894-4194-8feb-a99c2cd4be0a";
 
     @Test
