@@ -37,7 +37,7 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
 
 ## Fase 3 · Adapters y frontera tecnológica (hexágono de framework)
 
-- **Estado:** 🚧 implementada — la verificación funcional se consolida en la Fase 4.
+- **Estado:** ✅ completada — implementada aquí; su verificación funcional se consolidó en la Fase 4.
 - **Entregado:**
     - **Bootstrap** del módulo `framework` (Maven + JPMS): `requires domain,
     application` y la frontera tecnológica JPA/H2.
@@ -79,3 +79,59 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
 - **Siguiente:** Fase 4 · Inversión de dependencias entre módulos — cableado JPMS
   `provides/uses` que activa `retrieve`/`persist`, y con él la suite de pruebas del
   framework (integración del output adapter + end-to-end de los generic adapters).
+
+---
+
+## Fase 4 · Inversión de dependencias entre módulos (JPMS `provides`/`uses`)
+
+- **Estado:** ✅ completada
+- **Entregado:**
+    - **Cableado del puerto de salida sin acoplar el núcleo:** `application`
+      declara `uses RouterManagementOutputPort` y `RouterManagementInputPort` lo
+      resuelve con `ServiceLoader` de forma **perezosa** (solo al persistir o
+      recuperar); `framework` declara el `provides ... with RouterManagementH2Adapter`,
+      cuyo método `provider()` preserva el singleton. `application` sigue **sin**
+      `requires framework`: la flecha de dependencia nunca se invierte.
+    - **Transacciones reales:** `persistRouter` envuelve `em.persist` en una
+      transacción `RESOURCE_LOCAL` (begin/commit/rollback); sin ella no confirmaba.
+    - **Módulo `bootstrap`** (raíz de composición): único módulo que conoce a los
+      tres hexágonos y los ensambla; su `requires framework` es lo que mete al
+      proveedor en el grafo de módulos en ejecución. `Application::main` recorre el
+      flujo de punta a punta contra H2.
+    - **Pruebas del framework (5):** integración del output adapter contra H2
+      (lectura de un router semilla y escritura transaccional) y **end-to-end** por
+      los tres generic adapters (jerarquía core → edge → switch → red, round-trip
+      de persistencia y lectura del semilla por la puerta de entrada).
+- **Decisiones y hallazgos:**
+    - **Resolución perezosa, no inyección por constructor:** inyectar el puerto
+      habría acoplado la construcción del application service al arranque de la base
+      de datos; crear, conectar y desconectar no deben pagar ese coste.
+    - **`Location` es un value object también en la persistencia** → `LocationData`
+      pasó de entidad con PK y `@ManyToOne` a `@Embeddable` con `@AttributeOverrides`
+      (desaparece la tabla `location`). Como entidad, un router con ubicación nueva
+      no se podía persistir (*new object not marked cascade PERSIST*): el desajuste
+      value-object/entidad se paga en la frontera.
+    - **El proveedor JPA es dueño del DDL:** `inventory.sql` se dividió en
+      `schema.sql` + `data.sql`, **una sentencia por línea** porque el lector de
+      scripts de EclipseLink es orientado a línea; `persistence.xml` usa
+      `create-source=script` + `sql-load-script-source`, sin `INIT/RUNSCRIPT` en la URL.
+    - **Desviación de dominio (consistente con la ya existente):** el constructor de
+      `Switch` dejaba `switchNetworks` a `null` cuando el use case crea el switch sin
+      lista, de modo que `addNetworkToSwitch` lanzaba NPE. Se inicializa a lista
+      vacía mutable, **igual que `CoreRouter`/`EdgeRouter` hacen con sus mapas**. No
+      es un parche del test: un switch recién creado no debía reventar al añadirle
+      una red.
+    - **Falso positivo evitado en las pruebas:** el output adapter es un singleton
+      con un único `EntityManager`, cuya caché de primer nivel puede servir una
+      lectura sin tocar disco. Por eso la lectura *real* se verifica siempre contra
+      un router **semilla**, que ningún test ha escrito.
+- **Verificación:** `mvn test` en verde en todo el reactor — `domain` 19,
+  `application` 12 (Cucumber), `framework` 5 — y `Application::main` ejecutado sobre
+  el module path persiste y recupera un router desde H2.
+- **Riesgos de la Fase 3 ya despejados:** `@Entity`+`@MappedSuperclass`, arranque de
+  EclipseLink bajo JPMS y confirmación de transacciones en `persist`.
+- **Deuda conocida que entra en la Fase 5:** el `@OneToMany` de `RouterData` no
+  cascada, así que aún no se persiste el agregado con hijos (solo routers sueltos);
+  el cableado sigue siendo manual (singleton + `new` en los adapters), y es
+  justamente lo que vendrá a sustituir CDI.
+- **Siguiente:** Fase 5 · Integración cloud-native con Quarkus.
