@@ -14,6 +14,7 @@ import com.example.topologyinventory.domain.vo.Vendor;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -35,7 +36,10 @@ public class Switch extends Equipment {
                   SwitchType switchType, List<Network> switchNetworks) {
         super(id, vendor, model, ip, location);
         this.switchType = switchType;
-        this.switchNetworks = switchNetworks;
+        // Un switch recien creado por el use case llega sin lista: se parte de una
+        // vacia y mutable, igual que los routers hacen con sus mapas. Sin este guard,
+        // addNetworkToSwitch haria .add sobre null (NPE).
+        this.switchNetworks = switchNetworks == null ? new ArrayList<>() : switchNetworks;
     }
 
     /** Predicado para filtrar redes por protocolo (IPv4/IPv6). */
