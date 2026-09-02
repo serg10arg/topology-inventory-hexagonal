@@ -7,33 +7,30 @@
  * aplicación. Las flechas de dependencia apuntan siempre hacia dentro.
  *
  * Cláusulas de persistencia (lado de salida):
- * - 'requires jakarta.persistence' y 'org.eclipse.persistence.core': la API JPA
- *   y el proveedor EclipseLink usados por los output adapters y las entidades.
- * - 'requires java.sql': lo necesita el UUIDTypeConverter (java.sql.Types).
- * - 'opens ...output.h2.data': EclipseLink accede por reflexión a los campos
- *   privados de las entidades; sin 'opens' fallaría en tiempo de ejecución.
- * - 'exports ...output.h2.data': hace visibles los tipos de persistencia a
- *   otros módulos del reactor (p. ej. los tests de integración).
+ * - 'requires jakarta.persistence': la API JPA que anotan las entidades *Data.
+ *   El proveedor (Hibernate ORM) lo aporta Quarkus en tiempo de ejecución; no se
+ *   declara como módulo requerido porque no se referencian sus tipos en código.
+ * - 'opens ...output.h2.data': Hibernate accede por reflexión a los campos
+ *   privados de las entidades y embeddables; sin 'opens' fallaría en runtime.
+ * - 'exports ...output.h2.data': hace visibles los tipos de persistencia a otros
+ *   módulos del reactor (p. ej. los tests de integración).
+ *
+ * Nota de fase (SC2a): se retiran 'requires org.eclipse.persistence.core' y
+ * 'requires java.sql' —ambos eran de la era EclipseLink (proveedor y
+ * UUIDTypeConverter, ya eliminados)—. Los 'requires' de módulos automáticos de
+ * Quarkus (arc, narayana.jta) que el output adapter necesitará se añaden en SC2b,
+ * cuando el adapter pase a pedir el EntityManager al contenedor.
  *
  * Provisión de servicio (inversión de dependencias vía JPMS):
  * - 'provides ...RouterManagementOutputPort with ...RouterManagementH2Adapter':
- *   declara que la interfaz de salida definida por el hexágono de application
- *   queda implementada por el output adapter de H2. Es la mitad "oferta" del
- *   binding; la mitad "demanda" ('uses') vive en el módulo application, que es
- *   quien resuelve el port con ServiceLoader. No hace falta 'exports' del
- *   paquete del adapter: 'provides' ya concede a ServiceLoader el permiso de
- *   instanciar la clase manteniendo el paquete oculto.
- *
- * Nota: los 'requires' de Jackson y los adapters de entrada se añadirán cuando
- * esas piezas existan, para no arrastrar dependencias sin uso.
+ *   la interfaz de salida definida por application queda implementada por el
+ *   output adapter de H2. La mitad "demanda" ('uses') vive en application.
  */
 module framework {
     requires domain;
     requires application;
     requires static lombok;
     requires jakarta.persistence;
-    requires org.eclipse.persistence.core;
-    requires java.sql;
 
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;

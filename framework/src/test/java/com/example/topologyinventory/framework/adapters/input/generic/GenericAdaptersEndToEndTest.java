@@ -3,6 +3,7 @@ package com.example.topologyinventory.framework.adapters.input.generic;
 import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.EdgeRouter;
 import com.example.topologyinventory.domain.vo.*;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -79,6 +80,7 @@ class GenericAdaptersEndToEndTest {
      * lo invalida: la lectura contra disco la cubre {@link #retrieveSeededRouter()},
      * que pide un router que ningún test ha escrito.
      */
+    @Disabled("SC2a: la persistencia se prueba bajo Quarkus en SC2b; este camino usa el adapter programatico")
     @Test
     @DisplayName("e2e: persistir y recuperar un router por el adapter de entrada")
     void persistAndRetrieveRouter() {
@@ -103,6 +105,7 @@ class GenericAdaptersEndToEndTest {
      * escrito ningún test, así que no puede venir de la caché del
      * {@code EntityManager}.
      */
+    @Disabled("SC2a: la persistencia se prueba bajo Quarkus en SC2b; este camino usa el adapter programatico")
     @Test
     @DisplayName("e2e: recuperar un router semilla por el adapter de entrada")
     void retrieveSeededRouter() {

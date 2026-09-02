@@ -24,18 +24,32 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Frontera tecnológica: JPA (EclipseLink) + H2 en memoria -->
+        <!--
+         ~ Frontera de persistencia (SC2a): EclipseLink y persistence.xml se retiran
+         ~ por completo y la gestion pasa a Quarkus.
+         ~  - quarkus-hibernate-orm: el proveedor JPA (Hibernate ORM) que mapea las
+         ~    entidades y, con database.generation=drop-and-create, genera el DDL.
+         ~  - quarkus-jdbc-h2: driver H2 gobernado por Quarkus (sustituye al h2 suelto).
+         ~  - quarkus-agroal: pool de conexiones que Quarkus exige para el datasource.
+         ~ jakarta.persistence-api se declara SIN <version> (la aporta el quarkus-bom)
+         ~ para casar con 'requires jakarta.persistence' del module-info sin fijar una
+         ~ version que pudiera chocar con la de Hibernate.
+         -->
         <dependency>
             <groupId>jakarta.persistence</groupId>
             <artifactId>jakarta.persistence-api</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.eclipse.persistence</groupId>
-            <artifactId>org.eclipse.persistence.jpa</artifactId>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-h2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-agroal</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

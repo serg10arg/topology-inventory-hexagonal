@@ -5,8 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.eclipse.persistence.annotations.Convert;
-import org.eclipse.persistence.annotations.Converter;
 
 import java.io.Serializable;
 import java.util.List;
@@ -19,6 +17,10 @@ import java.util.UUID;
  * {@code router_id} del EdgeRouter al que pertenece: la persistencia del switch
  * ocurre siempre a través de la raíz del agregado (el router), nunca de forma
  * independiente.
+ *
+ * <p>Persistencia gestionada por Hibernate ORM. UUID nativo (sin converter),
+ * enums con {@link Enumerated}, y la colección {@link OneToMany} de redes en solo
+ * lectura sobre la columna {@code networks.switch_id}.
  */
 @Builder
 @Getter
@@ -26,38 +28,29 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "switches")
-@MappedSuperclass
-@Converter(name = "uuidConverter", converterClass = UUIDTypeConverter.class)
 public class SwitchData implements Serializable {
 
     @Id
     @Column(name = "switch_id", columnDefinition = "uuid", updatable = false)
-    @Convert("uuidConverter")
     private UUID switchId;
 
     @Column(name = "router_id")
-    @Convert("uuidConverter")
     private UUID routerId;
 
-    @Embedded
     @Enumerated(EnumType.STRING)
     @Column(name = "switch_vendor")
     private VendorData switchVendor;
 
-    @Embedded
     @Enumerated(EnumType.STRING)
     @Column(name = "switch_model")
     private ModelData switchModel;
 
     @Enumerated(EnumType.STRING)
-    @Embedded
     @Column(name = "switch_type")
     private SwitchTypeData switchType;
 
     @OneToMany
-    @JoinColumn(table = "networks",
-            name = "switch_id",
-            referencedColumnName = "switch_id")
+    @JoinColumn(name = "switch_id", insertable = false, updatable = false)
     private List<NetworkData> networks;
 
     @Embedded

@@ -1,6 +1,5 @@
 package com.example.topologyinventory.framework.adapters.output.h2.data;
 
-import jakarta.persistence.Embedded;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -11,7 +10,9 @@ import lombok.Getter;
  *
  * Es un tipo {@code @Embeddable}: sus columnas se incrustan en la tabla de la
  * entidad que lo contiene (router, switch o red). Deriva el protocolo de la
- * longitud de la dirección, igual que hace el value object de dominio.
+ * longitud de la dirección, igual que hace el value object de dominio. El
+ * protocolo se mapea con {@link Enumerated} (un enum básico), no como un
+ * {@code @Embedded} anidado.
  */
 @Embeddable
 @Getter
@@ -20,7 +21,6 @@ public class IPData {
     private String address;
 
     @Enumerated(EnumType.STRING)
-    @Embedded
     private ProtocolData protocol;
 
     private IPData(String address) {

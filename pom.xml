@@ -23,9 +23,6 @@
         <junit.version>5.11.3</junit.version>
         <compiler-plugin.version>3.13.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.2</surefire-plugin.version>
-        <jakarta.persistence.version>3.1.0</jakarta.persistence.version>
-        <eclipselink.version>4.0.4</eclipselink.version>
-        <h2.version>2.2.224</h2.version>
 
         <!--
          ~ Plataforma Quarkus. Se fija la LTS vigente, recomendada para produccion.
@@ -33,6 +30,13 @@
          ~ versiones de todas las extensiones Quarkus, igual que 'junit-bom' alinea
          ~ jupiter con platform. Sustituye al antiguo 'quarkus-universe-bom' del
          ~ libro (discontinuado tras Quarkus 2.x).
+         ~
+         ~ Con el swap de proveedor de SC2a, este BOM pasa a gobernar TODA la pila
+         ~ de persistencia (Hibernate ORM, Jakarta Persistence, driver H2, Agroal).
+         ~ Por eso desaparecen los pines de la era EclipseLink
+         ~ (jakarta.persistence.version, eclipselink.version, h2.version):
+         ~ mantenerlos arriesgaba fijar una version de la API JPA incompatible con
+         ~ la que trae Hibernate en este BOM.
          -->
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
@@ -53,7 +57,8 @@
      ~ Gestión centralizada de versiones. El BOM de JUnit alinea por construcción
      ~ junit-jupiter (5.x) con junit-platform (1.x), que llevan numeración distinta:
      ~ importarlo evita tener que recordar qué platform pareja con qué jupiter. El
-     ~ BOM de Quarkus cumple el mismo papel para las extensiones Quarkus.
+     ~ BOM de Quarkus cumple el mismo papel para las extensiones Quarkus y, a
+     ~ partir de SC2a, para la pila de persistencia completa.
      -->
     <dependencyManagement>
         <dependencies>
@@ -76,21 +81,6 @@
                 <version>${quarkus.platform.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>jakarta.persistence</groupId>
-                <artifactId>jakarta.persistence-api</artifactId>
-                <version>${jakarta.persistence.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.eclipse.persistence</groupId>
-                <artifactId>org.eclipse.persistence.jpa</artifactId>
-                <version>${eclipselink.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.h2database</groupId>
-                <artifactId>h2</artifactId>
-                <version>${h2.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.projectlombok</groupId>

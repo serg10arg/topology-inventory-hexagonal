@@ -4,8 +4,6 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.eclipse.persistence.annotations.Convert;
-import org.eclipse.persistence.annotations.Converter;
 
 import java.io.Serializable;
 import java.util.UUID;
@@ -14,24 +12,23 @@ import java.util.UUID;
  * Espejo de persistencia del value object {@code Network} del dominio.
  *
  * Modela la tabla {@code networks}. A diferencia de router y switch, su clave es
- * un entero autoincremental, no un UUID. Se persiste como parte del switch que
- * la contiene.
+ * un entero autogenerado por la base de datos ({@link GenerationType#IDENTITY}),
+ * no un UUID: por eso el seed inserta redes sin aportar {@code network_id}. Se
+ * persiste como parte del switch que la contiene.
  */
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
 @Table(name = "networks")
-@MappedSuperclass
-@Converter(name = "uuidConverter", converterClass = UUIDTypeConverter.class)
 public class NetworkData implements Serializable {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "network_id")
     private int id;
 
     @Column(name = "switch_id")
-    @Convert("uuidConverter")
     private UUID switchId;
 
     @Embedded
