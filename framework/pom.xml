@@ -11,6 +11,18 @@
 
     <artifactId>framework</artifactId>
 
+    <properties>
+        <!--
+         ~ JUnit alineado con la plataforma Quarkus SOLO en este modulo. quarkus-junit5
+         ~ 3.33 corre sobre JUnit 6.0.3 (jupiter y platform ya comparten numeracion) y
+         ~ falla con el 5.11.3 del POM raiz: NoSuchMethodError LauncherSession.getStore.
+         ~ El pin del raiz no se toca porque 'application' prueba con Cucumber 7.x, que
+         ~ va contra JUnit Platform 1.x. Sobrescribir aqui la propiedad basta: Maven
+         ~ interpola el junit-bom y el junit-jupiter heredados con el valor del hijo.
+         -->
+        <junit.version>6.0.3</junit.version>
+    </properties>
+
     <dependencies>
         <!-- Hexágonos internos: el framework depende de application y domain -->
         <dependency>
@@ -51,11 +63,60 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-agroal</artifactId>
         </dependency>
+        <!--
+         ~ SPI estandar de Jakarta con la que el output adapter (no es bean CDI)
+         ~ toma del contenedor el EntityManager (CDI.current()) y la UserTransaction.
+         ~ Sin <version>: la gobierna el quarkus-bom. Casan con 'requires jakarta.cdi'
+         ~ y 'requires jakarta.transaction' del module-info.
+         -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.transaction</groupId>
+            <artifactId>jakarta.transaction-api</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!--
+         ~ Test de integracion bajo Quarkus: @QuarkusTest arranca el contenedor
+         ~ (Arc + EntityManager + seed del perfil 'test') para ejercitar el round-trip
+         ~ real del output adapter. Los tests corren en classpath, donde ServiceLoader
+         ~ resuelve el output port via META-INF/services.
+         -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+             ~ Los tests de este modulo corren en CLASSPATH, no en module path.
+             ~ Surefire, al ver el module-info de src/main, arrancaba el JVM de test
+             ~ con module path: el 'provides' del descriptor cargaba una SEGUNDA copia
+             ~ del output adapter con el classloader del sistema, mientras @QuarkusTest
+             ~ trabaja con la suya en el QuarkusClassLoader. ServiceLoader las cruzaba
+             ~ y fallaba con "not a subtype" pese a que ambas clases eran correctas.
+             ~ En classpath solo queda el binding de META-INF/services, que es el que
+             ~ Quarkus usa tambien en produccion.
+             -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <useModulePath>false</useModulePath>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

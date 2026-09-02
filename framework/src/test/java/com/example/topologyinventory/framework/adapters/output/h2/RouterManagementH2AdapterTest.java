@@ -3,7 +3,7 @@ package com.example.topologyinventory.framework.adapters.output.h2;
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.entity.factory.RouterFactory;
 import com.example.topologyinventory.domain.vo.*;
-import org.junit.jupiter.api.Disabled;
+import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * desde que {@code LocationData} es {@code @Embeddable}— lo cubre el test
  * end-to-end de los generic adapters.
  */
-@Disabled("SC2a: sin persistence.xml el adapter no arranca; se restaura como @QuarkusTest en SC2b")
+@QuarkusTest
 class RouterManagementH2AdapterTest {
 
     /** EDGE router semilla insertado por import.sql (JUNIPER/XYZ0001, ubicación en Tully). */
@@ -40,7 +40,7 @@ class RouterManagementH2AdapterTest {
     @Test
     @DisplayName("retrieveRouter recupera y mapea un router semilla desde H2")
     void retrieveSeededRouter_shouldMapFromDatabase() {
-        var adapter = RouterManagementH2Adapter.getInstance();
+        var adapter = new RouterManagementH2Adapter();
 
         var router = adapter.retrieveRouter(Id.withId(SEEDED_EDGE_ROUTER_ID));
 
@@ -56,7 +56,7 @@ class RouterManagementH2AdapterTest {
     @Test
     @DisplayName("persistRouter confirma la transacción sin lanzar")
     void persistNewCoreRouter_shouldCommitWithoutError() {
-        var adapter = RouterManagementH2Adapter.getInstance();
+        var adapter = new RouterManagementH2Adapter();
         var newRouter = newCoreRouterFixture(
                 Id.withId("11111111-1111-1111-1111-111111111111"));
 

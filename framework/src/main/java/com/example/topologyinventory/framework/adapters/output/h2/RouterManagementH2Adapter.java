@@ -5,88 +5,102 @@ import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.vo.Id;
 import com.example.topologyinventory.framework.adapters.output.h2.data.RouterData;
 import com.example.topologyinventory.framework.adapters.output.h2.mappers.RouterH2Mapper;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.Persistence;
+import jakarta.transaction.UserTransaction;
 
 /**
  * Output adapter que implementa {@link RouterManagementOutputPort} usando JPA
- * (EclipseLink) sobre una base de datos H2 en memoria.
+ * (Hibernate ORM) sobre H2, con la persistencia <em>gestionada por Quarkus</em>.
  *
  * Es la implementación concreta del puerto de salida del router: aquí la
  * tecnología de persistencia queda encapsulada. Traduce a/desde el modelo de
  * dominio mediante {@link RouterH2Mapper}, de modo que el núcleo nunca ve tipos
- * de base de datos. El puerto solo declara recuperar y persistir (el router es
- * la raíz del agregado); no hay borrado directo.
+ * de base de datos.
  *
- * Se expone como singleton ({@link #getInstance()}) porque en esta fase el
- * cableado de puertos es manual; más adelante lo gestionará la inyección de
- * dependencias.
+ * <p><b>Cableado (Opción A, CDI-lite).</b> Este adapter NO es un bean CDI: lo
+ * instancia {@link java.util.ServiceLoader} (por {@code module-info provides} en
+ * el module path, por {@code META-INF/services} en el classpath de Quarkus). Al
+ * no ser bean, no puede recibir el {@code EntityManager} por {@code @Inject} ni
+ * usar {@code @Transactional}; por eso:
+ * <ul>
+ *   <li>obtiene el {@link EntityManager} gestionado seleccionándolo del contenedor
+ *       con la SPI estándar {@link CDI#current()} (no la API propietaria de Quarkus,
+ *       para no acoplar el hexágono de framework a módulos Quarkus en su descriptor);</li>
+ *   <li>demarca la transacción de forma programática con {@link UserTransaction}.</li>
+ * </ul>
+ * El adapter es <em>stateless</em>: no guarda EntityManager ni es singleton. Cada
+ * operación abre y cierra su propia transacción, dentro de la cual el contexto de
+ * persistencia está activo (necesario para que el mapper navegue las colecciones
+ * perezosas al recuperar). Convertirlo en bean CDI ({@code @ApplicationScoped},
+ * {@code @Inject}, {@code @Transactional}) es trabajo de la fase de CDI.
  */
 public class RouterManagementH2Adapter implements RouterManagementOutputPort {
 
-    private static RouterManagementH2Adapter instance;
-
-    private EntityManager em;
-
-    private RouterManagementH2Adapter() {
-        setUpH2Database();
+    /**
+     * Constructor público sin argumentos: es el que {@link java.util.ServiceLoader}
+     * exige en el camino de classpath ({@code META-INF/services}), donde el método
+     * {@code provider()} no se consulta. Sustituye al singleton de la fase anterior,
+     * innecesario ahora que el adapter no guarda estado.
+     */
+    public RouterManagementH2Adapter() {
     }
 
     @Override
     public Router retrieveRouter(Id id) {
-        var routerData = em.getReference(RouterData.class, id.getId());
-        return RouterH2Mapper.routerDataToDomain(routerData);
+        var transaction = userTransaction();
+        try {
+            transaction.begin();
+            // La lectura y el mapeo van dentro de la transacción: el mapper navega
+            // las colecciones @OneToMany (perezosas), que fuera de una sesión activa
+            // lanzarían LazyInitializationException. find (no getReference) carga la
+            // entidad de inmediato.
+            var routerData = entityManager().find(RouterData.class, id.getId());
+            var router = RouterH2Mapper.routerDataToDomain(routerData);
+            transaction.commit();
+            return router;
+        } catch (Exception e) {
+            rollbackQuietly(transaction);
+            throw new RuntimeException("Fallo al recuperar el router " + id.getId(), e);
+        }
     }
 
     @Override
     public Router persistRouter(Router router) {
+        // El mapeo dominio -> data es en memoria; puede hacerse fuera de la transacción.
         var routerData = RouterH2Mapper.routerDomainToData(router);
-        // Fuera de un contenedor Jakarta EE, con una unidad de persistencia
-        // RESOURCE_LOCAL la transacción es manual: sin begin/commit, em.persist
-        // no confirma nada en la base de datos.
-        var transaction = em.getTransaction();
-        transaction.begin();
+        var transaction = userTransaction();
         try {
-            em.persist(routerData);
+            transaction.begin();
+            entityManager().persist(routerData);
             transaction.commit();
-        } catch (RuntimeException e) {
-            if (transaction.isActive()) {
-                transaction.rollback();
-            }
-            throw e;
+            return router;
+        } catch (Exception e) {
+            rollbackQuietly(transaction);
+            throw new RuntimeException(
+                    "Fallo al persistir el router " + router.getId().getId(), e);
         }
-        return router;
     }
 
     /**
-     * Arranca el {@link EntityManager} contra la unidad de persistencia
-     * "inventory" definida en {@code META-INF/persistence.xml}. Fuera de un
-     * contenedor Jakarta EE, el {@code EntityManager} se obtiene de forma
-     * programática con {@link Persistence#createEntityManagerFactory(String)}.
+     * Selecciona el {@link EntityManager} gestionado por Quarkus del contenedor CDI.
+     * Su contexto de persistencia queda ligado a la transacción JTA activa.
      */
-    private void setUpH2Database() {
-        EntityManagerFactory entityManagerFactory =
-                Persistence.createEntityManagerFactory("inventory");
-        this.em = entityManagerFactory.createEntityManager();
+    private EntityManager entityManager() {
+        return CDI.current().select(EntityManager.class).get();
     }
 
-    public static RouterManagementH2Adapter getInstance() {
-        if (instance == null) {
-            instance = new RouterManagementH2Adapter();
+    /** Selecciona la {@link UserTransaction} del contenedor CDI (proveída por Narayana/JTA). */
+    private UserTransaction userTransaction() {
+        return CDI.current().select(UserTransaction.class).get();
+    }
+
+    /** Rollback de limpieza que nunca enmascara la excepción original. */
+    private static void rollbackQuietly(UserTransaction transaction) {
+        try {
+            transaction.rollback();
+        } catch (Exception ignored) {
+            // no-op: la excepción de negocio ya se propaga
         }
-        return instance;
-    }
-
-    /**
-     * Punto de entrada para {@link java.util.ServiceLoader}. El sistema de módulos
-     * instancia el proveedor de un servicio mediante un constructor público sin
-     * argumentos <em>o</em> un método estático público {@code provider()}. Como
-     * esta clase es un singleton con constructor privado, exponemos {@code provider()}
-     * para que ServiceLoader reutilice la instancia de {@link #getInstance()} sin
-     * abrir el constructor.
-     */
-    public static RouterManagementH2Adapter provider() {
-        return getInstance();
     }
 }

@@ -15,11 +15,13 @@
  * - 'exports ...output.h2.data': hace visibles los tipos de persistencia a otros
  *   módulos del reactor (p. ej. los tests de integración).
  *
- * Nota de fase (SC2a): se retiran 'requires org.eclipse.persistence.core' y
- * 'requires java.sql' —ambos eran de la era EclipseLink (proveedor y
- * UUIDTypeConverter, ya eliminados)—. Los 'requires' de módulos automáticos de
- * Quarkus (arc, narayana.jta) que el output adapter necesitará se añaden en SC2b,
- * cuando el adapter pase a pedir el EntityManager al contenedor.
+ * - 'requires jakarta.cdi' y 'requires jakarta.transaction': la SPI estandar con
+ *   la que el output adapter obtiene, del contenedor gestionado por Quarkus, el
+ *   EntityManager (CDI.current()) y la UserTransaction. Se usan las APIs estandar
+ *   de Jakarta -modulos JPMS estables- en lugar de las de Quarkus (Arc,
+ *   QuarkusTransaction), de modo que este hexagono no 'requires' ningun modulo
+ *   Quarkus: el acoplamiento a Quarkus queda solo en la resolucion de beans en
+ *   runtime, no en el descriptor.
  *
  * Provisión de servicio (inversión de dependencias vía JPMS):
  * - 'provides ...RouterManagementOutputPort with ...RouterManagementH2Adapter':
@@ -31,6 +33,8 @@ module framework {
     requires application;
     requires static lombok;
     requires jakarta.persistence;
+    requires jakarta.cdi;
+    requires jakarta.transaction;
 
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;
