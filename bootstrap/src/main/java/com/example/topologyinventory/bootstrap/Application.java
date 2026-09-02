@@ -4,16 +4,24 @@ import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.EdgeRouter;
 import com.example.topologyinventory.domain.vo.*;
 import com.example.topologyinventory.framework.adapters.input.generic.RouterManagementGenericAdapter;
+import io.quarkus.runtime.QuarkusApplication;
+import io.quarkus.runtime.annotations.QuarkusMain;
 
 /**
- * Punto de arranque y raíz de composición de la aplicación.
+ * Punto de arranque de la aplicación bajo Quarkus (raíz de composición).
  *
- * Ensambla el sistema construyendo los generic adapters (que se auto-cablean con
- * su constructor sin argumentos) y ejecuta un flujo demostrativo que recorre el
- * sistema de punta a punta. Es la primera vez que el cableado por
- * {@code ServiceLoader} se resuelve en una aplicación en ejecución (no en un
- * test): al estar el módulo framework en el grafo, el output port de H2 queda
- * disponible.
+ * Anotada con {@link QuarkusMain}, es el punto de entrada real: Quarkus arranca
+ * primero el contenedor —Arc, el datasource Agroal, Hibernate ORM y el seed— y
+ * solo entonces invoca {@link #run(String...)}. Esta inversión es lo que hace que
+ * el flujo demostrativo funcione de punta a punta: cuando el output adapter pide
+ * el {@code EntityManager} al contenedor ({@code CDI.current()}), Arc ya está en
+ * pie. Es la primera vez que el cableado por {@code ServiceLoader} se resuelve en
+ * una aplicación Quarkus en ejecución (por {@code META-INF/services}, en el
+ * classpath), no en un test.
+ *
+ * <p>Se ejecuta en <em>command mode</em>: {@code run} realiza el flujo y devuelve
+ * un código de salida, con lo que la aplicación termina (no queda como servicio;
+ * el adapter HTTP que la mantendría viva es trabajo de una fase posterior).
  *
  * <p>El flujo persiste un core router <em>sin hijos</em> (camino de salida
  * completo: crear → persistir → recuperar contra H2) y luego crea y conecta un
@@ -24,9 +32,11 @@ import com.example.topologyinventory.framework.adapters.input.generic.RouterMana
  * <p>La base H2 es en memoria y efímera: lo que aquí se persiste vive solo
  * mientras corre el proceso. Es una demostración del flujo, no un almacén.
  */
-public class Application {
+@QuarkusMain
+public class Application implements QuarkusApplication {
 
-    public static void main(String[] args) {
+    @Override
+    public int run(String... args) {
         var routerAdapter = new RouterManagementGenericAdapter();
 
         var location = Location.builder()
@@ -59,5 +69,6 @@ public class Application {
                 + "routers en el core: " + connectedCore.getRouters().size());
 
         System.out.println("== fin ==");
+        return 0;
     }
 }
