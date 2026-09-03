@@ -1,23 +1,26 @@
-# Módulo `bootstrap` — Raíz de composición y arranque
+# Módulo `bootstrap` — Raíz de composición y arranque Quarkus
 
 > La capa que **ensambla y arranca**. Es el único módulo que conoce a los tres
-> hexágonos a la vez y los une en una aplicación ejecutable. No contiene lógica de
-> negocio ni tecnología: solo compone y da al botón de encendido.
+> hexágonos a la vez y los une en una aplicación ejecutable, y el único que enciende
+> el motor cloud-native (Quarkus). No contiene lógica de negocio ni tecnología de
+> persistencia: solo compone y da al botón de encendido.
 
 Una analogía: si `domain` es el reglamento, `application` el gestor y `framework`
-la sala de máquinas, este módulo es **el día de la inauguración**. Alguien contrata
-a la recepción, la conecta con el almacén y procesa el primer pedido real de
-principio a fin. Cuando ese primer pedido cruza el sistema entero sin fricción, la
-empresa está abierta.
+la sala de máquinas, este módulo es **el día de la inauguración**. Alguien enciende
+las luces (arranca el contenedor), conecta la recepción con el almacén y procesa el
+primer pedido real de principio a fin. Cuando ese primer pedido cruza el sistema
+entero sin fricción, la empresa está abierta.
 
 ## ¿Qué se implementó?
 
-El punto de entrada de la aplicación y el ensamblado de los hexágonos.
+El punto de entrada bajo Quarkus, el ensamblado de los hexágonos y la configuración
+de runtime de la persistencia.
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
-| **Clase de arranque** | El `main` que construye los adapters y ejercita el flujo de punta a punta. | `Application` |
-| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos. | `module-info.java` (`requires domain, application, framework`) |
+| **Punto de entrada Quarkus** | La clase `@QuarkusMain` que arranca el contenedor y ejecuta el flujo de punta a punta. | `Application` (`implements QuarkusApplication`) |
+| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos y con el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, quarkus.core`) |
+| **Configuración de runtime** | Datasource H2 + Hibernate ORM y seed de la base. | `application.properties`, `import.sql` |
 
 ## ¿Por qué se implementó así?
 
@@ -25,62 +28,72 @@ El punto de entrada de la aplicación y el ensamblado de los hexágonos.
   todas las piezas; si esa dependencia "hacia todo" viviera dentro de un hexágono,
   ese hexágono perdería su frontera. Aislarla aquí mantiene a cada uno con su
   responsabilidad única.
-- **Para cerrar el circuito de la inversión de dependencias.** El cableado JPMS
-  `provides/uses` solo **resuelve** cuando el módulo `framework` está en un grafo de
-  módulos en ejecución. `requires framework` lo pone ahí, y el `ServiceLoader` del
-  input port encuentra al output adapter de H2 sin que el `main` mencione jamás JPA.
-- **Para demostrar el sistema de verdad.** El `main` recorre entrada → caso de uso →
-  dominio → salida (persistencia), probando que el ensamblado funciona como
-  aplicación, no solo como piezas en un test.
+- **Para concentrar la costura con Quarkus en la capa más externa.** `bootstrap` es
+  el único módulo que `requires quarkus.core`: al ser el que arranca el motor, es el
+  único que conoce el framework de ejecución. Los tres hexágonos internos no dependen
+  de Quarkus, preservando la dirección de dependencias hacia adentro.
+- **Para demostrar el sistema de verdad, con el contenedor vivo.** El flujo recorre
+  entrada → caso de uso → dominio → salida (persistencia gestionada por Quarkus),
+  probando que el ensamblado funciona como aplicación real, no solo como piezas en
+  un test.
 
 ## ¿Cómo se implementó?
 
-- Como un **módulo Java** (JPMS) que `requires` a `domain`, `application` y
-  `framework`. `framework` aporta transitivamente EclipseLink y H2 en runtime.
-- La clase `Application` construye los generic adapters (que se **auto-cablean** con
-  su constructor sin argumentos) y dispara un flujo demostrativo: crea y persiste un
-  router contra H2, lo recupera, y conecta un edge en memoria.
-- Es un `main` **plano**, a propósito: el cableado se hace por `ServiceLoader`. La
-  gestión del ciclo de vida con un contenedor (CDI/Quarkus) llega en una fase
+- Como un **módulo Java** (JPMS) que `requires` a `domain`, `application`,
+  `framework` y `quarkus.core`. `framework` aporta transitivamente Hibernate ORM y
+  H2 en runtime.
+- La clase `Application`, anotada `@QuarkusMain` e implementando `QuarkusApplication`,
+  ejecuta su lógica en `run(...)` **después** de que Quarkus arranque el contenedor.
+  Se ejecuta en **command mode**: realiza el flujo (crea y persiste un router contra
+  H2, lo recupera, y conecta un edge en memoria) y termina con código 0.
+- El cableado del output port lo resuelve `ServiceLoader` por `META-INF/services`
+  con el contenedor vivo; el adapter obtiene su `EntityManager` del contenedor sin
+  ser un bean CDI. La gestión por CDI de puertos y casos de uso llega en una fase
   posterior.
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
-| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos y cierra el grafo de módulos en ejecución |
-| Maven | Construcción multi-módulo |
+| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos y con `quarkus.core`; cierra el grafo de módulos |
+| Quarkus 3.33 | Runtime cloud-native: arranca el contenedor y gestiona la persistencia |
+| Hibernate ORM (vía Quarkus) | Proveedor JPA configurado en `application.properties` |
+| Maven | Construcción multi-módulo; `quarkus-maven-plugin` produce la app |
 
 ## ¿Cuál es su responsabilidad?
 
-**Componer y arrancar.** Reunir los hexágonos ya construidos y ponerlos en marcha,
-sin añadir reglas ni tecnología propias.
+**Componer y arrancar.** Reunir los hexágonos ya construidos y ponerlos en marcha
+sobre Quarkus, sin añadir reglas ni tecnología de negocio propias.
 
 | Sí es responsabilidad del bootstrap | NO es responsabilidad del bootstrap |
 |---|---|
-| Ensamblar los adapters y arrancar la app | Contener reglas de negocio (viven en `domain`) |
+| Ensamblar los adapters y arrancar la app bajo Quarkus | Contener reglas de negocio (viven en `domain`) |
 | Conocer a los tres hexágonos a la vez | Orquestar casos de uso (lo hace `application`) |
-| Ser el punto de entrada (`main`) | Implementar tecnología concreta (lo hace `framework`) |
-| Cerrar el grafo de módulos en runtime | Definir puertos o adapters |
+| Ser el punto de entrada (`@QuarkusMain`) | Implementar tecnología concreta (lo hace `framework`) |
+| Configurar el runtime (datasource, seed) y cerrar el grafo de módulos | Definir puertos o adapters |
 
 ## Estado actual
 
-Implementado y operativo. `Application::main` arranca sobre el module path y
-ejecuta el flujo de punta a punta contra H2: el `ServiceLoader` resuelve el output
-port fuera de un test y el router persistido se recupera con sus datos. La base H2
+Implementado y operativo bajo Quarkus. `Application` arranca el contenedor y, en
+command mode, ejecuta el flujo de punta a punta contra H2: el `ServiceLoader`
+resuelve el output port por `META-INF/services` con el contenedor vivo, el router
+persistido se recupera con sus datos, y el proceso termina con código 0. La base H2
 es en memoria y efímera (demostración del flujo, no un almacén persistente).
 
 ## ¿Cómo se relaciona con el proyecto?
 
-Se sitúa por encima de los tres hexágonos; es el único que los conoce a todos:
+Se sitúa por encima de los tres hexágonos; es el único que los conoce a todos y el
+único que enciende el motor:
 
 ```
         bootstrap  ─▶  framework  ─▶  application  ─▶  domain
-      (este módulo)    (tecnología)   (coordinación)    (núcleo)
+      (arranque       (tecnología)   (coordinación)    (núcleo)
+       + Quarkus)
 ```
 
-- `requires` a los tres hexágonos y **ensambla** sus adapters.
-- Al meter `framework` en el grafo, **activa la resolución** del cableado
-  `provides/uses` definido en la Fase 4.
+- `requires` a los tres hexágonos y a `quarkus.core`, y **ensambla** sus adapters.
+- Al meter `framework` en el grafo, **activa la resolución** del cableado del output
+  port; con el contenedor Quarkus vivo, el adapter obtiene su `EntityManager`
+  gestionado.
 
 > Para la visión global del proyecto (arquitectura completa, stack y estado),
 > consulta el **README raíz** del repositorio.

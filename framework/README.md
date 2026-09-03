@@ -22,7 +22,7 @@ base de datos.
 | **Output adapter** | La implementación concreta de un puerto de salida sobre una tecnología. | `RouterManagementH2Adapter` |
 | **Modelo de persistencia** | Clases espejo orientadas a la base de datos, sin lógica de negocio. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData`, `IPData`, los enums `*Data`, `UUIDTypeConverter` |
 | **Mapper** | El traductor entre las entidades del dominio y su espejo de persistencia. | `RouterH2Mapper` |
-| **Configuración de persistencia** | La unidad JPA, el esquema y los datos iniciales de arranque. | `persistence.xml`, `schema.sql`, `data.sql` |
+| **Configuración de persistencia** | La gestiona Quarkus desde el módulo de arranque: datasource, generación de esquema y semilla. | `application.properties`, `import.sql` (en `bootstrap`) |
 
 ## ¿Por qué se implementó así?
 
@@ -43,10 +43,11 @@ base de datos.
 
 - Como un **módulo Java** (JPMS) que **depende de `application` y `domain`** y
   añade la frontera tecnológica (JPA + H2).
-- El output adapter se expone como **singleton** porque en esta fase el cableado de
-  puertos es manual; más adelante lo gestionará la inyección de dependencias. El
-  `EntityManager` se arranca de forma programática contra la unidad de persistencia
-  `inventory`.
+- El output adapter es **stateless**: lo instancia `ServiceLoader` (por
+  `META-INF/services` en el classpath de Quarkus, por `provides` en el module path) y
+  toma el `EntityManager` gestionado y la `UserTransaction` del contenedor con la SPI
+  estándar `CDI.current()`. No es un bean CDI, así que este módulo no `requires`
+  ningún módulo de Quarkus; convertirlo en bean lo hará la fase de CDI.
 - Las entidades de persistencia usan **JPA (`jakarta.persistence`)**; el
   identificador `UUID` se mapea con un *converter* del proveedor. El paquete de
   entidades se **abre por reflexión** al proveedor en el `module-info`.
@@ -56,7 +57,7 @@ base de datos.
 | Java 21 | Lenguaje base |
 | JPMS (Java Modules) | Declara la dependencia con `application`/`domain` y abre el paquete de entidades para reflexión |
 | JPA (`jakarta.persistence`) | API de persistencia |
-| EclipseLink 4.0.x | Proveedor JPA |
+| Hibernate ORM (vía Quarkus) | Proveedor JPA; genera el DDL desde las entidades |
 | H2 | Base de datos en memoria |
 | Lombok | Builders y getters de las entidades de persistencia |
 | Maven | Construcción multi-módulo |
@@ -85,7 +86,7 @@ operativos.
 Las pruebas del módulo (5) cubren la integración del output adapter contra H2 y el
 recorrido end-to-end por los generic adapters. **Deuda conocida:** los `@OneToMany`
 del modelo de persistencia no cascadan, así que todavía no se guarda el agregado
-con sus hijos; y el cableado sigue siendo manual (singleton), lo que sustituirá
+con sus hijos; y el cableado sigue siendo `ServiceLoader` + `new`, lo que sustituirá
 CDI más adelante.
 
 ## ¿Cómo se relaciona con el proyecto?

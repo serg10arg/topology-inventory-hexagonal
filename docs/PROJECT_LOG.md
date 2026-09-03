@@ -135,3 +135,70 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
   el cableado sigue siendo manual (singleton + `new` en los adapters), y es
   justamente lo que vendrá a sustituir CDI.
 - **Siguiente:** Fase 5 · Integración cloud-native con Quarkus.
+
+---
+
+## Fase 5 · Integración cloud-native con Quarkus
+
+- **Estado:** ✅ completada
+- **Entregado:**
+    - **Quarkus 3.33 (LTS) en el reactor multi-módulo:** BOM `io.quarkus.platform:quarkus-bom`
+      importado en el POM raíz; `quarkus-maven-plugin` (goal `build`) que hace de
+      `bootstrap` el módulo que arranca el motor; `io.smallrye:jandex-maven-plugin`
+      indexando los tres hexágonos para que la augmentation descubra las entidades,
+      que viven en jars separados.
+    - **Proveedor JPA sustituido:** fuera EclipseLink y `persistence.xml`; dentro
+      **Hibernate ORM gestionado por Quarkus** (`quarkus-hibernate-orm`, `quarkus-jdbc-h2`,
+      `quarkus-agroal`), configurado en `application.properties`. El DDL lo genera
+      Hibernate desde las entidades (`schema-management.strategy=drop-and-create`) y el
+      seed vive en `import.sql`.
+    - **Output adapter reconectado (CDI-lite):** `RouterManagementH2Adapter` es ahora
+      *stateless* y obtiene el `EntityManager` gestionado y una `UserTransaction` del
+      contenedor por la SPI estándar `CDI.current()`, sin convertirse en bean CDI. El
+      binding del `ServiceLoader` se porta a `META-INF/services` (constructor público),
+      que es el camino que usa Quarkus en classpath; el `provides` del `module-info` se
+      conserva para el module path.
+    - **Arranque bajo Quarkus:** `Application` pasa a `@QuarkusMain` + `QuarkusApplication`
+      (command mode): el contenedor arranca primero y luego ejecuta el flujo crear →
+      persistir → recuperar, que vuelve a funcionar de punta a punta en la aplicación
+      real, no solo en tests.
+    - **Pruebas migradas a `@QuarkusTest`:** los cinco tests del framework corren bajo el
+      contenedor vivo, ejercitando el round-trip real contra H2.
+- **Decisiones y hallazgos:**
+    - **CDI-lite en vez de CDI pleno:** mantener el adapter cableado por `ServiceLoader`
+      y pedirle el `EntityManager` al contenedor (no `@Inject`) deja el hexágono de
+      `framework` sin requerir ningún módulo de Quarkus en su descriptor. La gestión por
+      contenedor de puertos y casos de uso se aborda en una fase posterior.
+    - **Entidades hechas estrictas para Hibernate** (EclipseLink las toleraba): sin
+      `@MappedSuperclass`; UUID nativo de H2 (eliminado `UUIDTypeConverter`); enums con
+      `@Enumerated` (retirados `@Embeddable` sobre enums y `@Embedded` sobre campos enum);
+      `@OneToMany` en solo lectura compartiendo la FK escalar ya mapeada, en vez del
+      `@JoinTable` autorreferente que colisionaba con la tabla de la entidad; `NetworkData`
+      con clave `IDENTITY`.
+    - **La costura JPMS↔Quarkus existe, pero es del arnés de test, no del código.** El
+      `module-info` de `framework` no conoce Quarkus; solo `bootstrap` `requires quarkus.core`.
+      El fast-jar no sufre fricción porque no hay module path en runtime.
+    - **`import.sql` no se ejecuta en perfil `prod` por defecto:** se fija
+      `quarkus.hibernate-orm.sql-load-script=import.sql` explícito para que el seed cargue
+      también fuera de dev/test.
+- **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
+
+    | # | Decisión | Motivo | Evidencia |
+    |---|----------|--------|-----------|
+    | 1 | `quarkus-bom` (no `quarkus-universe-bom`); `io.smallrye` jandex; `fast-jar` por defecto | El universe BOM y el jandex de JBoss se discontinuaron en Quarkus 3.x | `mvn package` verde; feature `[cdi]` |
+    | 2 | Swap de proveedor adelantado a esta fase: EclipseLink → Hibernate ORM gestionado por Quarkus | Objetivo de la fase: `persistence.xml` → `application.properties` | features `[hibernate-orm, jdbc-h2, agroal]` |
+    | 3 | DDL propiedad de Hibernate (`drop-and-create`) + `import.sql`, retirando `schema.sql` a mano | Dueño único del esquema, idiomático en Quarkus | `create table routers/switches/networks` en el log de arranque |
+    | 4 | UUID nativo, enums con `@Enumerated`, `@OneToMany` read-only sobre FK escalar | Hibernate rechaza combinaciones que EclipseLink toleraba | Augmentation sin errores de metamodelo; 3 FK y ninguna tabla de join |
+    | 5 | EntityManager por SPI estándar `CDI.current()` + `UserTransaction`, no `@Inject`/`@Transactional` | Adapter no-bean; hexágono sin `requires quarkus.*` | `framework` no requiere Quarkus; round-trip verde |
+    | 6 | `ServiceLoader` portado a `META-INF/services` (+ constructor público, adapter stateless) | Quarkus resuelve por classpath, donde `module-info provides` no aplica | El mismo binding lo usan `@QuarkusTest` y el fast-jar |
+    | 7 | `framework`: `junit 6.0.3` y surefire `useModulePath=false` | `quarkus-junit5 3.33` corre sobre JUnit 6; surefire modular duplicaba el proveedor cruzando classloaders | Los 5 tests del framework en verde; Cucumber (JUnit 5) intacto |
+
+- **Verificación:** `mvn clean package` en verde en todo el reactor — `domain` 19,
+  `application` 12 (Cucumber), `framework` 5 (`@QuarkusTest`, 0 skipped) —; el
+  `quarkus-run.jar` arranca en command mode, ejecuta crear → persistir → recuperar
+  contra H2 y termina con código 0.
+- **Deuda conocida que entra en la siguiente fase:** el cableado sigue siendo
+  `ServiceLoader` + `new` en los adapters (la gestión por CDI de puertos y casos de uso
+  es lo que viene); el `@OneToMany` de `RouterData` sigue sin cascade, así que aún no se
+  persiste el agregado con hijos.
+- **Siguiente:** Fase 6 · Gestión del ciclo de vida con CDI.
