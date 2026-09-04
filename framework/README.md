@@ -13,14 +13,16 @@ entre el idioma del gestor (las entidades del dominio) y el formato del archivo
 
 ## ¿Qué se implementó?
 
-El **lado de salida** (*driven*) del hexágono: la implementación concreta del
-puerto de persistencia sobre H2 con JPA, y la traducción entre el dominio y la
-base de datos.
+Ambos lados del hexágono: el **lado de salida** (*driven*), con la implementación
+concreta del puerto de persistencia sobre H2 con JPA y la traducción dominio↔base
+de datos; y el **lado de entrada** (*driving*), con los adapters genéricos que
+reciben la petición y la reenvían al caso de uso.
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
-| **Output adapter** | La implementación concreta de un puerto de salida sobre una tecnología. | `RouterManagementH2Adapter` |
-| **Modelo de persistencia** | Clases espejo orientadas a la base de datos, sin lógica de negocio. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData`, `IPData`, los enums `*Data`, `UUIDTypeConverter` |
+| **Output adapter** | La implementación concreta de un puerto de salida sobre una tecnología, gestionada como bean CDI. | `RouterManagementH2Adapter` |
+| **Input adapters** | Los puntos de entrada del sistema (base del futuro adapter REST), gestionados como beans CDI. | `RouterManagementGenericAdapter`, `SwitchManagementGenericAdapter`, `NetworkManagementGenericAdapter` |
+| **Modelo de persistencia** | Clases espejo orientadas a la base de datos, sin lógica de negocio. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData`, `IPData`, los enums `*Data` |
 | **Mapper** | El traductor entre las entidades del dominio y su espejo de persistencia. | `RouterH2Mapper` |
 | **Configuración de persistencia** | La gestiona Quarkus desde el módulo de arranque: datasource, generación de esquema y semilla. | `application.properties`, `import.sql` (en `bootstrap`) |
 
@@ -43,20 +45,26 @@ base de datos.
 
 - Como un **módulo Java** (JPMS) que **depende de `application` y `domain`** y
   añade la frontera tecnológica (JPA + H2).
-- El output adapter es **stateless**: lo instancia `ServiceLoader` (por
-  `META-INF/services` en el classpath de Quarkus, por `provides` en el module path) y
-  toma el `EntityManager` gestionado y la `UserTransaction` del contenedor con la SPI
-  estándar `CDI.current()`. No es un bean CDI, así que este módulo no `requires`
-  ningún módulo de Quarkus; convertirlo en bean lo hará la fase de CDI.
-- Las entidades de persistencia usan **JPA (`jakarta.persistence`)**; el
-  identificador `UUID` se mapea con un *converter* del proveedor. El paquete de
-  entidades se **abre por reflexión** al proveedor en el `module-info`.
+- El output adapter es un **bean CDI** (`@ApplicationScoped`) que Arc descubre por
+  el índice Jandex y enchufa donde `application` declara el puerto de salida por
+  `@Inject`. Recibe el `EntityManager` gestionado por `@Inject` y delega la
+  transacción en `@Transactional`, sin abrirla ni confirmarla a mano. Los input
+  adapters son también beans `@ApplicationScoped` que reciben su caso de uso por
+  `@Inject`.
+- El módulo declara solo la **SPI estándar de Jakarta** (`jakarta.cdi`,
+  `jakarta.transaction`, `jakarta.persistence`), no módulos de Quarkus: Arc la
+  satisface en runtime, de modo que este hexágono no `requires` nada de Quarkus.
+- Las entidades de persistencia usan **JPA (`jakarta.persistence`)** con UUID
+  nativo. El paquete de entidades se **abre por reflexión** al proveedor
+  (Hibernate) en el `module-info` para que pueda acceder a sus campos privados.
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
 | JPMS (Java Modules) | Declara la dependencia con `application`/`domain` y abre el paquete de entidades para reflexión |
+| CDI (`jakarta.cdi`) | Marca adapters y output adapter como beans (`@ApplicationScoped`, `@Inject`); Arc los resuelve |
 | JPA (`jakarta.persistence`) | API de persistencia |
+| Jakarta Transactions | Demarcación declarativa con `@Transactional` |
 | Hibernate ORM (vía Quarkus) | Proveedor JPA; genera el DDL desde las entidades |
 | H2 | Base de datos en memoria |
 | Lombok | Builders y getters de las entidades de persistencia |
@@ -76,18 +84,18 @@ concreto de lo que la aplicación pide, sin contener reglas ni orquestación.
 
 ## Estado actual
 
-Los **dos lados están implementados y verificados**. El de salida enchufa el
-puerto de persistencia del router sobre H2 con JPA y se ofrece como **servicio
-JPMS** (`provides`), de modo que el hexágono de aplicación lo resuelve por
-`ServiceLoader` sin conocerlo. El de entrada son los generic adapters, hoy POJOs y
-mañana la base del adapter REST, con `retrieveRouter`/`persistRouter` ya
-operativos.
+Los **dos lados están implementados, gestionados por CDI y verificados**. El de
+salida enchufa el puerto de persistencia del router sobre H2 con JPA: el output
+adapter es un bean `@ApplicationScoped` que Arc inyecta donde `application` declara
+el puerto, con el `EntityManager` por `@Inject` y la transacción por
+`@Transactional`. El de entrada son los generic adapters —beans CDI, hoy la base
+del futuro adapter REST—, con `retrieveRouter`/`persistRouter` operativos.
 
-Las pruebas del módulo (5) cubren la integración del output adapter contra H2 y el
-recorrido end-to-end por los generic adapters. **Deuda conocida:** los `@OneToMany`
-del modelo de persistencia no cascadan, así que todavía no se guarda el agregado
-con sus hijos; y el cableado sigue siendo `ServiceLoader` + `new`, lo que sustituirá
-CDI más adelante.
+Las pruebas del módulo (5) corren bajo `@QuarkusTest` y cubren la integración del
+output adapter contra H2 y el recorrido end-to-end por los generic adapters (que,
+al inyectarse los tres, hace además de *smoke test* del grafo de cableado).
+**Deuda conocida:** los `@OneToMany` del modelo de persistencia no cascadan, así
+que todavía no se guarda el agregado con sus hijos (solo routers sueltos).
 
 ## ¿Cómo se relaciona con el proyecto?
 

@@ -14,12 +14,13 @@ desarrolla de forma incremental, añadiendo capacidades por fases.
 | Maven | 3.9.x | Build multi-módulo |
 | Java Modules (JPMS) | — | Aísla los hexágonos y fuerza la inversión de dependencias |
 | Lombok | 1.18.34 | Reduce boilerplate en el modelo de dominio |
-| Quarkus | 3.33 (LTS) | Runtime cloud-native: motor de arranque y de persistencia |
+| Quarkus | 3.33 (LTS) | Runtime cloud-native: motor de arranque, de inyección (Arc) y de persistencia |
+| CDI (Jakarta / Quarkus Arc) | Quarkus BOM | Gestiona puertos, casos de uso y el output adapter como beans (`@ApplicationScoped`, `@Inject`) |
 | Jakarta Persistence (JPA) | Quarkus BOM | API de persistencia (frontera de salida) |
 | Hibernate ORM | Quarkus BOM | Proveedor JPA gestionado por Quarkus; genera el DDL desde las entidades |
 | H2 | Quarkus BOM | Base de datos en memoria (driver `quarkus-jdbc-h2`) |
-| Agroal / Narayana JTA | Quarkus BOM | Pool de conexiones y transacciones (frontera de salida) |
-| Jandex (SmallRye) | 3.5.3 | Índice de clases en build-time (descubrimiento de entidades entre módulos) |
+| Agroal / Narayana JTA | Quarkus BOM | Pool de conexiones y transacciones (`@Transactional`) |
+| Jandex (SmallRye) | 3.5.3 | Índice de clases en build-time (descubrimiento de entidades y beans entre módulos) |
 | JUnit | 5.11.x · 6.0.3 (framework) | Tests unitarios y de integración (`@QuarkusTest`) |
 | Cucumber | 7.20.x | Tests de aceptación (BDD) sobre JUnit 5 Platform |
 
@@ -39,17 +40,22 @@ tecnología, y por eso puede evolucionar sin verse arrastrado por cambios de
 framework.
 
 Sobre esa base, el runtime cloud-native arranca con Quarkus: el módulo `bootstrap`
-enciende el contenedor (`@QuarkusMain`) y el output adapter obtiene su
-`EntityManager` gestionado del contenedor, sin que el dominio ni la aplicación
-lleguen a conocer el framework de arranque.
+enciende el contenedor (`@QuarkusMain`), y los puertos, casos de uso y adapters se
+gestionan como **beans CDI** que se enchufan entre sí por `@Inject` —el output
+adapter recibe su `EntityManager` gestionado y delega la transacción en
+`@Transactional`—. Arc descubre esos beans en build-time a través del índice
+Jandex. Los hexágonos declaran solo la **SPI estándar** (`jakarta.cdi`), que Arc
+satisface en runtime, de modo que el acoplamiento a Quarkus permanece confinado en
+`bootstrap`: ni el dominio ni la aplicación llegan a conocer el framework de
+arranque.
 
 ## Módulos
 
 | Módulo (JPMS) | Hexágono | Responsabilidad |
 |---------------|----------|-----------------|
 | `domain` | Domain | Entities, value objects, domain services y specifications |
-| `application` | Application | Use cases e input/output ports |
-| `framework` | Framework | Input/output adapters: persistencia H2/JPA con Hibernate ORM gestionado por Quarkus (salida) y adapters genéricos de entrada |
+| `application` | Application | Use cases e input/output ports, gestionados como beans CDI |
+| `framework` | Framework | Input/output adapters (beans CDI): persistencia H2/JPA con Hibernate ORM gestionado por Quarkus (salida) y adapters genéricos de entrada |
 | `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación bajo Quarkus (`@QuarkusMain`); única costura con `quarkus.core` |
 
 ## Decisiones técnicas
@@ -63,11 +69,12 @@ lleguen a conocer el framework de arranque.
 - **Hibernate ORM (gestionado por Quarkus) + H2** en memoria en la frontera de
   salida, aislados del dominio mediante mappers; el DDL lo genera Hibernate desde
   las entidades y el seed vive en `import.sql`.
-- **Persistencia gestionada por el contenedor sin acoplar los hexágonos:** el
-  output adapter obtiene el `EntityManager` por la SPI estándar `CDI.current()` y
-  demarca la transacción con `UserTransaction`, permaneciendo cableado por
-  `ServiceLoader` (binding portado a `META-INF/services` para el classpath de
-  Quarkus). Así el hexágono de `framework` no requiere ningún módulo de Quarkus.
+- **Cableado por CDI sin acoplar los hexágonos a Quarkus:** los puertos de entrada,
+  los casos de uso y el output adapter son beans `@ApplicationScoped` que se
+  enchufan por `@Inject`; el output adapter recibe el `EntityManager` gestionado por
+  `@Inject` y demarca la transacción con `@Transactional`. Los hexágonos requieren
+  solo la SPI estándar `jakarta.cdi` —no módulos de Quarkus—, que Arc satisface en
+  runtime; así el acoplamiento a Quarkus queda confinado en `bootstrap`.
 - **Quarkus 3.33 (LTS)** por su arranque rápido y su enfoque cloud-native; la
   costura JPMS↔Quarkus queda solo en el módulo `bootstrap` (`@QuarkusMain`,
   command mode).
@@ -102,7 +109,7 @@ mvn -pl bootstrap -am quarkus:dev
 | 3 | Adapters y frontera tecnológica (capa de framework) | ✅     |
 | 4 | Inversión de dependencias entre módulos (JPMS) | ✅     |
 | 5 | Integración cloud-native con Quarkus | ✅     |
-| 6 | Gestión del ciclo de vida con CDI | ⏸️      |
+| 6 | Gestión del ciclo de vida con CDI | ✅     |
 | 7 | API REST reactiva | ⏸️      |
 | 8 | Persistencia reactiva | ⏸️      |
 | 9 | Contenedores y despliegue (Docker / Kubernetes) | ⏸️      |

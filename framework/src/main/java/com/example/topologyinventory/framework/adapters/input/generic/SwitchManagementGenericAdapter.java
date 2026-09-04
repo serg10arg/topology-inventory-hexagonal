@@ -1,27 +1,31 @@
 package com.example.topologyinventory.framework.adapters.input.generic;
 
-import com.example.topologyinventory.application.ports.input.SwitchManagementInputPort;
 import com.example.topologyinventory.application.usecases.SwitchManagementUseCase;
 import com.example.topologyinventory.domain.entity.EdgeRouter;
 import com.example.topologyinventory.domain.entity.Switch;
 import com.example.topologyinventory.domain.vo.*;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 /**
  * Adapter de entrada (<em>driving</em>) para la gestión de switches.
  *
- * Reenvía las peticiones al caso de uso de switches, que solo admite conexión a
- * un {@link EdgeRouter}. Como en este sistema los switches se persisten a través
- * del agregado del router (no de forma independiente), este adapter no expone
- * recuperación ni persistencia: crear, conectar y desconectar bastan en esta
- * fase. Es un POJO, base del futuro adapter REST.
+ * Reenvía las peticiones al caso de uso de switches, que solo admite conexión a un
+ * {@link EdgeRouter}. Como en este sistema los switches se persisten a través del agregado
+ * del router (no de forma independiente), este adapter no expone recuperación ni
+ * persistencia: crear, conectar y desconectar bastan en esta fase. Es la base del futuro
+ * adapter REST.
+ *
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped} y el caso de uso llega por
+ * {@code @Inject}: Arc provee el bean que implementa {@link SwitchManagementUseCase}
+ * ({@code SwitchManagementInputPort}). Sustituye al {@code new SwitchManagementInputPort()}
+ * del constructor anterior.
  */
+@ApplicationScoped
 public class SwitchManagementGenericAdapter {
 
-    private final SwitchManagementUseCase switchManagementUseCase;
-
-    public SwitchManagementGenericAdapter() {
-        this.switchManagementUseCase = new SwitchManagementInputPort();
-    }
+    @Inject
+    SwitchManagementUseCase switchManagementUseCase;
 
     /**
      * POST /switch/create — crea un switch (sin persistir).

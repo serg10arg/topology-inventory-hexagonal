@@ -202,3 +202,86 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
   es lo que viene); el `@OneToMany` de `RouterData` sigue sin cascade, así que aún no se
   persiste el agregado con hijos.
 - **Siguiente:** Fase 6 · Gestión del ciclo de vida con CDI.
+
+---
+
+## Fase 6 · Gestión del ciclo de vida con CDI
+
+- **Estado:** ✅ completada
+- **Entregado:**
+    - **SC1 — Cadena de router bajo CDI (unidad atómica de runtime):**
+      `RouterManagementH2Adapter` pasa a bean `@ApplicationScoped`, recibe el
+      `EntityManager` por `@Inject` y delega la transacción en `@Transactional`
+      (fuera `CDI.current()`, `UserTransaction` y el `try/begin/commit/rollback`).
+      `RouterManagementInputPort` pasa a `@ApplicationScoped` con el output port
+      `@Inject` (fuera el método `outputPort()` y el `ServiceLoader`).
+      `RouterManagementGenericAdapter` pasa a `@ApplicationScoped` con el caso de uso
+      `@Inject` (fuera el constructor con `new`). `Application` recibe el generic
+      adapter por `@Inject` (command mode). Se retira el binding `ServiceLoader`:
+      `provides` (framework), `uses` (application) y el fichero `META-INF/services`.
+    - **SC2 — Switch y red bajo CDI:** `SwitchManagementInputPort` y
+      `NetworkManagementInputPort` pasan a `@ApplicationScoped` **sin** `@Inject`
+      (esta rama no tiene puerto de salida); `SwitchManagementGenericAdapter` y
+      `NetworkManagementGenericAdapter` pasan a `@ApplicationScoped` con su caso de uso
+      `@Inject`. El test end-to-end de los generic adapters obtiene los tres adapters
+      por `@Inject`, con lo que pasa a ser también un *smoke test* del grafo driving.
+    - **SC3 — Colapsado.** No hizo falta ninguna directiva JPMS extra (`opens` para
+      proxies de Arc, aperturas de paquete): el `fast-jar` corre en classpath plano y
+      los `@QuarkusTest` con `useModulePath=false`, así que Arc descubre los beans por
+      el índice Jandex, no por el grafo de módulos. Se documenta y se disuelve, como
+      pasó con la fricción del arnés en la Fase 5.
+    - **Ajustes de `module-info`:** `application` `+requires jakarta.cdi` y `−uses`;
+      `framework` `−provides`; `bootstrap` `+requires jakarta.inject`. `application`
+      suma `jakarta.enterprise.cdi-api` (gobernada por el BOM).
+- **Decisiones y hallazgos:**
+    - **La cadena de router es atómica para el runtime.** `Application → generic
+      adapter → input port → output adapter → EntityManager` es una secuencia de
+      inyecciones: si un eslabón se instancia con `new` mientras el de abajo espera
+      inyección, el campo queda `null`. Por eso SC1 aterrizó de una pieza y verde, en
+      lugar de partirse en sub-pasos que no compilarían o romperían el flujo.
+    - **El *client proxy* conserva la laziness de la Fase 4 sin código propio.**
+      `@Inject` de un bean `@ApplicationScoped` entrega un proxy; la instancia real —y
+      con ella el arranque de la persistencia— no se materializa hasta la primera
+      llamada. La resolución perezosa que antes se programaba con `ServiceLoader` +
+      `if (== null)` es ahora una propiedad del scope. Verificado: inyectar el output
+      port en el input port no adelanta el arranque de H2.
+    - **`@Transactional` cubre la navegación lazy — con evidencia, no solo javadoc.**
+      El arranque de SC1 disparó dos `select`: `where router_id=?` y luego
+      `where router_parent_core_id=?`. El segundo es la colección `@OneToMany`
+      perezosa navegada por el mapper *dentro* de la transacción; fuera de sesión
+      habría dado `LazyInitializationException`.
+    - **La costura CDI se movió hacia dentro; la de Quarkus, no.** Los hexágonos ahora
+      dependen de la **SPI estándar** (`jakarta.cdi`, `jakarta.inject`), que Arc
+      satisface en runtime, pero **ningún hexágono `requires` un módulo de Quarkus**:
+      `bootstrap` sigue siendo el único con `quarkus.core`. La fidelidad es a Jakarta,
+      no a Quarkus.
+    - **`@Inject` funciona en el `@QuarkusMain QuarkusApplication`** (command mode): el
+      generic adapter llegó inyectado, sin necesidad del fallback `Arc.container()`.
+    - **Tests de `application` sin convertir (Opción A).** Siguen siendo Cucumber
+      plano: no tocan el output port, así que pasarlos a `@QuarkusTest` + `@Mock` como
+      el libro solo reintroduciría el choque JUnit 5 (Cucumber) ↔ 6 (`quarkus-junit5`)
+      sin ganar cobertura. Queda un `new RouterManagementInputPort()` en
+      `ApplicationTestData` cuyo output port es `null` fuera de CDI: no es un defecto,
+      es la frontera correcta (la persistencia se prueba en `framework`, con Quarkus).
+- **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
+
+    | # | Decisión | Motivo | Evidencia |
+    |---|----------|--------|-----------|
+    | 1 | `@Inject EntityManager` + `@Transactional` **adelantados** del cap. de persistencia reactiva a esta fase (la referencia mantiene `@PersistenceContext`) | Este núcleo ya no arrastra el `Persistence.createEntityManagerFactory` de la referencia; el bean gestionado es más limpio | Dos `select` en el arranque (`router_id=?` y `router_parent_core_id=?`): navegación lazy cubierta por la transacción |
+    | 2 | DI provista por `quarkus-arc`, no por `quarkus-resteasy` | REST llega en la fase siguiente; Arc ya da la DI sin arrastrar el stack web | Feature `[cdi]` presente sin `resteasy`; reactor verde |
+    | 3 | Input ports de switch/red son beans **sin** `@Inject` (la referencia les inyecta un output port) | Este núcleo no define `SwitchManagementOutputPort`: la persistencia va por el agregado router | `createAndConnectHierarchy` verde inyectando ambos casos de uso; sin `UnsatisfiedResolutionException` |
+    | 4 | Los generic adapters inyectan **un** caso de uso, no dos | Tu diseño divergente: cada generic adapter delega en un único use case | `git diff` de SC2; contenedor arranca y resuelve sin ambigüedad |
+    | 5 | Tests de `application` en Cucumber plano (no `@QuarkusTest` + `@Mock`) | No ejercitan el output port; convertirlos reintroduciría el conflicto JUnit 5↔6 | `application` 12 verde; `framework` en JUnit 6 intacto |
+    | 6 | `ServiceLoader` retirado por completo (`provides`/`uses` + `META-INF/services`) en favor de la resolución de beans | Dos caminos de resolución sobran; dejar `META-INF/services` cargaría una copia no gestionada del adapter (con `EntityManager` en `null`) | `git rm` del fichero de servicios; `module-info` sin `provides`/`uses`; resolución CDI sin ambigüedad |
+    | 7 | SC3 (`opens` para proxies de Arc) **colapsa**: cero directivas JPMS extra | El runtime es classpath plano; Arc descubre por Jandex, no por module path | `git diff` de SC2 sin tocar ningún `module-info`; ni el reactor ni los `@QuarkusTest` lanzaron error de proxy |
+
+- **Verificación:** `mvn clean install` en verde en todo el reactor — `domain` 19,
+  `application` 12 (Cucumber), `framework` 5 (`@QuarkusTest`, 0 skipped) —; el
+  `quarkus-run.jar` arranca en command mode, ejecuta crear → persistir → recuperar
+  contra H2 (con la navegación lazy cubierta por la transacción) y termina con
+  código 0.
+- **Deuda conocida que entra en la siguiente fase:** el `@OneToMany` de `RouterData`
+  sigue sin cascade, así que aún no se persiste el agregado con hijos (solo routers
+  sueltos); los adapters de entrada siguen siendo genéricos (POJOs invocados desde el
+  `main` y los tests), a la espera del adapter REST.
+- **Siguiente:** Fase 7 · API REST reactiva.

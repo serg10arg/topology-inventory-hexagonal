@@ -1,26 +1,29 @@
 package com.example.topologyinventory.framework.adapters.input.generic;
 
-import com.example.topologyinventory.application.ports.input.NetworkManagementInputPort;
 import com.example.topologyinventory.application.usecases.NetworkManagementUseCase;
 import com.example.topologyinventory.domain.entity.Switch;
 import com.example.topologyinventory.domain.vo.IP;
 import com.example.topologyinventory.domain.vo.Network;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 /**
  * Adapter de entrada (<em>driving</em>) para la gestión de redes.
  *
  * Reenvía las peticiones al caso de uso de redes. Las redes viven dentro de un
- * {@link Switch}, así que las operaciones reciben el switch destino directamente;
- * su persistencia ocurre con el agregado del router. Es un POJO, base del futuro
- * adapter REST.
+ * {@link Switch}, así que las operaciones reciben el switch destino directamente; su
+ * persistencia ocurre con el agregado del router. Es la base del futuro adapter REST.
+ *
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped} y el caso de uso llega por
+ * {@code @Inject}: Arc provee el bean que implementa {@link NetworkManagementUseCase}
+ * ({@code NetworkManagementInputPort}). Sustituye al {@code new NetworkManagementInputPort()}
+ * del constructor anterior.
  */
+@ApplicationScoped
 public class NetworkManagementGenericAdapter {
 
-    private final NetworkManagementUseCase networkManagementUseCase;
-
-    public NetworkManagementGenericAdapter() {
-        this.networkManagementUseCase = new NetworkManagementInputPort();
-    }
+    @Inject
+    NetworkManagementUseCase networkManagementUseCase;
 
     /**
      * POST /network/create — crea una red (sin asociarla todavía a un switch).

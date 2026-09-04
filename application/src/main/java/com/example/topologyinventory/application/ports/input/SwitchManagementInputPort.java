@@ -4,12 +4,20 @@ import com.example.topologyinventory.application.usecases.SwitchManagementUseCas
 import com.example.topologyinventory.domain.entity.EdgeRouter;
 import com.example.topologyinventory.domain.entity.Switch;
 import com.example.topologyinventory.domain.vo.*;
+import jakarta.enterprise.context.ApplicationScoped;
 
 /**
- * Application service que implementa {@link SwitchManagementUseCase}. Construye
- * switches mediante su builder y delega la conexión y desconexión en el agregado
- * {@link EdgeRouter}, único router que admite switches.
+ * Application service que implementa {@link SwitchManagementUseCase}. Construye switches
+ * mediante su builder y delega la conexión y desconexión en el agregado {@link EdgeRouter},
+ * único router que admite switches.
+ *
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: no inyecta nada (esta
+ * rama no tiene puerto de salida —la persistencia va solo por el agregado router—), pero se
+ * anota como bean para ser <em>inyectable</em> en {@code SwitchManagementGenericAdapter}.
+ * Es una divergencia consciente respecto al libro, cuyo {@code SwitchManagementInputPort}
+ * inyecta un {@code SwitchManagementOutputPort} que este núcleo no define.
  */
+@ApplicationScoped
 public class SwitchManagementInputPort implements SwitchManagementUseCase {
 
     /** {@inheritDoc} Genera una identidad nueva para el switch mediante {@code Id.withoutId()}. */

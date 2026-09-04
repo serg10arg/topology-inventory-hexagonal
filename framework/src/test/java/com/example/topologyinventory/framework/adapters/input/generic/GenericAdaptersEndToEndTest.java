@@ -14,13 +14,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * Test end-to-end del lado <em>driving</em>: entra por los generic adapters (la "puerta de
  * entrada" del sistema, base del futuro adapter REST) y recorre dos caminos completos —la
  * jerarquía del agregado en memoria y la persistencia, que atraviesa los tres hexágonos:
- * adapter de entrada → use case → puerto de salida → output adapter de H2—. Que la cadena
- * router se resuelva aquí por {@code @Inject} prueba que el cableado CDI funciona sin que el
- * hexágono de application conozca la clase concreta del output port.
+ * adapter de entrada → use case → puerto de salida → output adapter de H2—. Que la malla
+ * driving completa (router, switch, red) se resuelva por {@code @Inject} prueba que el
+ * cableado CDI funciona sin que el hexágono de application conozca las clases concretas.
  *
- * <p>El {@code routerAdapter} se obtiene por {@code @Inject} (bean CDI). Los adapters de
- * switch y red se construyen aún con {@code new}: su migración a CDI es el siguiente
- * sub-commit; hasta entonces resuelven su caso de uso por su propio constructor.
+ * <p>Los tres adapters se obtienen por {@code @Inject} (beans CDI): además de la lógica de
+ * dominio, este test verifica que Arc arma el grafo driving completo sin ambigüedad ni
+ * ciclos. Un fallo de cableado (bean ausente, resolución dudosa) caería en el arranque del
+ * contenedor, no en un assert.
  *
  * <p>Los fixtures respetan las reglas de dominio (specifications): misma ubicación (mismo
  * país) en toda la cadena, IPs distintas entre core, edge y switch, y un CIDR válido
@@ -40,12 +41,15 @@ class GenericAdaptersEndToEndTest {
     @Inject
     RouterManagementGenericAdapter routerAdapter;
 
+    @Inject
+    SwitchManagementGenericAdapter switchAdapter;
+
+    @Inject
+    NetworkManagementGenericAdapter networkAdapter;
+
     @Test
     @DisplayName("e2e: crear y conectar la jerarquía core → edge → switch → red")
     void createAndConnectHierarchy() {
-        var switchAdapter = new SwitchManagementGenericAdapter();
-        var networkAdapter = new NetworkManagementGenericAdapter();
-
         // core ← edge
         var core = (CoreRouter) routerAdapter.createRouter(
                 Vendor.CISCO, Model.XYZ0001, IP.fromAddress("1.0.0.1"),
@@ -74,7 +78,7 @@ class GenericAdaptersEndToEndTest {
 
     /**
      * Round-trip por el adapter de entrada: persistir un router nuevo y volver a recuperarlo.
-     * Con el {@code EntityManager} transaction-scoped, persistir y recuperar son ahora
+     * Con el {@code EntityManager} transaction-scoped, persistir y recuperar son
      * transacciones separadas, así que la lectura no se sirve de la caché de primer nivel:
      * lee de H2 tras el commit del persist.
      */

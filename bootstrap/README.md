@@ -19,7 +19,7 @@ de runtime de la persistencia.
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
 | **Punto de entrada Quarkus** | La clase `@QuarkusMain` que arranca el contenedor y ejecuta el flujo de punta a punta. | `Application` (`implements QuarkusApplication`) |
-| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos y con el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, quarkus.core`) |
+| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos, la SPI de inyección y el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, jakarta.inject, quarkus.core`) |
 | **Configuración de runtime** | Datasource H2 + Hibernate ORM y seed de la base. | `application.properties`, `import.sql` |
 
 ## ¿Por qué se implementó así?
@@ -31,7 +31,8 @@ de runtime de la persistencia.
 - **Para concentrar la costura con Quarkus en la capa más externa.** `bootstrap` es
   el único módulo que `requires quarkus.core`: al ser el que arranca el motor, es el
   único que conoce el framework de ejecución. Los tres hexágonos internos no dependen
-  de Quarkus, preservando la dirección de dependencias hacia adentro.
+  de Quarkus —solo de la SPI estándar de Jakarta—, preservando la dirección de
+  dependencias hacia adentro.
 - **Para demostrar el sistema de verdad, con el contenedor vivo.** El flujo recorre
   entrada → caso de uso → dominio → salida (persistencia gestionada por Quarkus),
   probando que el ensamblado funciona como aplicación real, no solo como piezas en
@@ -40,22 +41,22 @@ de runtime de la persistencia.
 ## ¿Cómo se implementó?
 
 - Como un **módulo Java** (JPMS) que `requires` a `domain`, `application`,
-  `framework` y `quarkus.core`. `framework` aporta transitivamente Hibernate ORM y
-  H2 en runtime.
+  `framework`, `jakarta.inject` y `quarkus.core`. `framework` aporta transitivamente
+  Hibernate ORM y H2 en runtime.
 - La clase `Application`, anotada `@QuarkusMain` e implementando `QuarkusApplication`,
   ejecuta su lógica en `run(...)` **después** de que Quarkus arranque el contenedor.
   Se ejecuta en **command mode**: realiza el flujo (crea y persiste un router contra
   H2, lo recupera, y conecta un edge en memoria) y termina con código 0.
-- El cableado del output port lo resuelve `ServiceLoader` por `META-INF/services`
-  con el contenedor vivo; el adapter obtiene su `EntityManager` del contenedor sin
-  ser un bean CDI. La gestión por CDI de puertos y casos de uso llega en una fase
-  posterior.
+- El cableado es **CDI de punta a punta**: `Application` recibe el generic adapter
+  por `@Inject` (como bean gestionado en command mode), que a su vez inyecta el caso
+  de uso, que inyecta el output adapter, que recibe su `EntityManager` por `@Inject`.
+  No queda ningún `new` de colaboradores ni `ServiceLoader` en la cadena.
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
-| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos y con `quarkus.core`; cierra el grafo de módulos |
-| Quarkus 3.33 | Runtime cloud-native: arranca el contenedor y gestiona la persistencia |
+| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos, `jakarta.inject` y `quarkus.core`; cierra el grafo de módulos |
+| Quarkus 3.33 | Runtime cloud-native: arranca el contenedor (Arc), gestiona la inyección y la persistencia |
 | Hibernate ORM (vía Quarkus) | Proveedor JPA configurado en `application.properties` |
 | Maven | Construcción multi-módulo; `quarkus-maven-plugin` produce la app |
 
@@ -74,8 +75,8 @@ sobre Quarkus, sin añadir reglas ni tecnología de negocio propias.
 ## Estado actual
 
 Implementado y operativo bajo Quarkus. `Application` arranca el contenedor y, en
-command mode, ejecuta el flujo de punta a punta contra H2: el `ServiceLoader`
-resuelve el output port por `META-INF/services` con el contenedor vivo, el router
+command mode, ejecuta el flujo de punta a punta contra H2: Arc inyecta la cadena de
+beans (generic adapter → caso de uso → output adapter → `EntityManager`), el router
 persistido se recupera con sus datos, y el proceso termina con código 0. La base H2
 es en memoria y efímera (demostración del flujo, no un almacén persistente).
 
@@ -91,9 +92,8 @@ Se sitúa por encima de los tres hexágonos; es el único que los conoce a todos
 ```
 
 - `requires` a los tres hexágonos y a `quarkus.core`, y **ensambla** sus adapters.
-- Al meter `framework` en el grafo, **activa la resolución** del cableado del output
-  port; con el contenedor Quarkus vivo, el adapter obtiene su `EntityManager`
-  gestionado.
+- Al arrancar el contenedor, **Arc descubre e inyecta** la cadena de beans; el
+  output adapter recibe su `EntityManager` gestionado por `@Inject`.
 
 > Para la visión global del proyecto (arquitectura completa, stack y estado),
 > consulta el **README raíz** del repositorio.

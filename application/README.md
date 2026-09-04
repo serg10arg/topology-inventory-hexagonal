@@ -13,12 +13,12 @@ resultado). No inventa reglas: las aplica llamando al dominio.
 ## ¿Qué se implementó?
 
 La definición de **qué puede hacer el sistema** y de sus **puntos de conexión**
-con el exterior. Dos tipos de piezas:
+con el exterior. Tres tipos de piezas:
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
 | **Casos de uso** (puertos de entrada) | El catálogo de operaciones que ofrece el sistema, expresado como contratos. | `RouterManagementUseCase`, `SwitchManagementUseCase`, `NetworkManagementUseCase` |
-| **Servicios de aplicación** | La implementación de esos casos de uso: coordinan al dominio paso a paso. | `RouterManagementInputPort`, `SwitchManagementInputPort`, `NetworkManagementInputPort` |
+| **Servicios de aplicación** | La implementación de esos casos de uso: coordinan al dominio paso a paso. Gestionados como beans CDI (`@ApplicationScoped`). | `RouterManagementInputPort`, `SwitchManagementInputPort`, `NetworkManagementInputPort` |
 | **Puerto de salida** | Un contrato que declara lo que la aplicación necesita del exterior (p. ej. guardar/recuperar), sin decir cómo. | `RouterManagementOutputPort` |
 
 ## ¿Por qué se implementó así?
@@ -31,24 +31,30 @@ con el exterior. Dos tipos de piezas:
   router") y deja que otro módulo aporte el *cómo* (qué base de datos, qué
   tecnología). Así se puede cambiar la tecnología sin tocar la lógica.
 - **Para que el núcleo no dependa de la infraestructura, sino al revés.** Es el
-  principio de *inversión de dependencia*: la infraestructura se adaptará a lo que
-  la aplicación pide, y no al contrario.
+  principio de *inversión de dependencia*: la infraestructura se adapta a lo que
+  la aplicación pide, y no al contrario. El contenedor CDI enchufa la
+  implementación del puerto de salida sin que este módulo conozca la clase
+  concreta.
 
 ## ¿Cómo se implementó?
 
-- Como un **módulo Java** (JPMS) que **depende del módulo `domain`** y de nada más.
+- Como un **módulo Java** (JPMS) que **depende del módulo `domain`** y declara la
+  SPI estándar de CDI (`requires jakarta.cdi`).
 - Cada caso de uso es una **interfaz** (el contrato) con una clase que lo
-  implementa (el servicio que orquesta). Esta separación entre "lo que se ofrece"
-  y "cómo se hace" es lo que permite enchufar el exterior más adelante sin
-  sorpresas.
+  implementa (el servicio que orquesta). Los servicios son beans
+  `@ApplicationScoped`: Arc los descubre y los enchufa en los adapters de entrada
+  por `@Inject`.
 - La persistencia se declara con un **puerto de salida**: una interfaz que este
-  módulo define pero que **implementará el módulo de infraestructura** en una
-  etapa posterior.
+  módulo define y que **implementa el módulo de framework**. La resolución la hace
+  el contenedor CDI por `@Inject`, no `ServiceLoader`; como el bean del puerto es
+  `@ApplicationScoped`, lo que se inyecta es un *client proxy* que difiere el
+  arranque de la base de datos hasta la primera operación de persistencia.
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
-| JPMS (Java Modules) | Declara la dependencia con `domain` y aísla la capa |
+| JPMS (Java Modules) | Declara la dependencia con `domain` y la SPI de CDI; aísla la capa |
+| CDI (`jakarta.cdi`) | Marca los servicios de aplicación como beans (`@ApplicationScoped`, `@Inject`) |
 | Lombok | Reduce código repetitivo |
 | Cucumber + JUnit 5 | Pruebas de comportamiento (describen cada operación como un escenario legible) |
 
@@ -61,21 +67,24 @@ dominio y delegar el trabajo técnico a través de los puertos.
 |---|---|
 | Ofrecer el catálogo de operaciones (casos de uso) | Contener reglas de negocio (viven en `domain`) |
 | Coordinar los pasos de cada operación | Saber qué base de datos o framework se usa |
-| Definir qué necesita del exterior (puertos de salida) | Implementar esos puertos (lo hará `framework`) |
+| Definir qué necesita del exterior (puertos de salida) | Implementar esos puertos (lo hace `framework`) |
 
 ## Estado actual
 
 El catálogo de operaciones y los puertos están definidos, y el **puerto de
-salida** (persistencia) **ya está enchufado**: este módulo declara `uses` en su
-`module-info` y `RouterManagementInputPort` resuelve la implementación con
-`ServiceLoader` la primera vez que hace falta; la aporta el módulo `framework`
-con su `provides`. La resolución es perezosa a propósito —crear, conectar y
-desconectar no arrastran el arranque de la base de datos— y el núcleo sigue sin
-conocer la clase concreta del adapter.
+salida** (persistencia) **se resuelve por CDI**: los servicios de aplicación son
+beans `@ApplicationScoped` y `RouterManagementInputPort` recibe la implementación
+del puerto por `@Inject`; la aporta el módulo `framework`. El *client proxy* del
+bean conserva la laziness que antes daba la resolución por `ServiceLoader` —crear,
+conectar y desconectar no arrastran el arranque de la base de datos— y el núcleo
+sigue sin conocer la clase concreta del adapter. Los servicios de switch y red no
+inyectan puerto de salida: en este sistema switches y redes se persisten a través
+del agregado router.
 
 Las pruebas de este módulo (Cucumber) siguen ejercitando solo las operaciones en
-memoria: sin `framework` en su grafo de módulos no hay proveedor que cargar, y
-así debe ser. El camino con persistencia se verifica desde `framework`.
+memoria y se mantienen fuera del contenedor Quarkus a propósito: no tocan el
+puerto de salida, así que no necesitan CDI ni un proveedor de persistencia. El
+camino con persistencia se verifica desde `framework`, con Quarkus vivo.
 
 ## ¿Cómo se relaciona con el proyecto?
 
@@ -87,8 +96,8 @@ Se sitúa **entre el núcleo y el mundo exterior**:
 ```
 
 - Hacia dentro, **usa `domain`** para ejecutar cada operación respetando sus reglas.
-- Hacia fuera, **expone puertos** que el futuro módulo `framework` implementará
-  para conectar el sistema con bases de datos y APIs.
+- Hacia fuera, **expone puertos** que el módulo `framework` implementa para
+  conectar el sistema con bases de datos y APIs.
 
 > Para la visión global del proyecto (arquitectura completa, stack y estado),
 > consulta el **README raíz** del repositorio.
