@@ -1,31 +1,29 @@
 package com.example.topologyinventory.framework.adapters.input.generic;
 
-import com.example.topologyinventory.application.ports.input.RouterManagementInputPort;
 import com.example.topologyinventory.application.usecases.RouterManagementUseCase;
 import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.vo.*;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 /**
  * Adapter de entrada (<em>driving</em>) para la gestión de routers.
  *
- * Es el punto por el que el mundo exterior invoca al sistema: recibe la petición
- * y la reenvía al caso de uso, sin contener lógica propia. En esta fase es un
- * POJO; será la base del futuro adapter REST (los comentarios de cada método
- * anticipan su endpoint).
+ * Es el punto por el que el mundo exterior invoca al sistema: recibe la petición y la
+ * reenvía al caso de uso, sin contener lógica propia. En esta fase es un bean CDI; será
+ * la base del futuro adapter REST (los comentarios de cada método anticipan su endpoint).
  *
- * El caso de uso se instancia con el constructor sin argumentos de
- * {@link RouterManagementInputPort}. El puerto de salida (persistencia) se
- * enchufará en la fase de inyección de dependencias (JPMS {@code provides/uses});
- * hasta entonces solo son operativos crear, conectar y desconectar.
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped} y el caso de uso llega
+ * por {@code @Inject}: Arc provee el bean que implementa {@link RouterManagementUseCase}
+ * ({@code RouterManagementInputPort}). Sustituye al {@code new RouterManagementInputPort()}
+ * del constructor anterior.
  */
+@ApplicationScoped
 public class RouterManagementGenericAdapter {
 
-    private final RouterManagementUseCase routerManagementUseCase;
-
-    public RouterManagementGenericAdapter() {
-        this.routerManagementUseCase = new RouterManagementInputPort();
-    }
+    @Inject
+    RouterManagementUseCase routerManagementUseCase;
 
     /**
      * POST /router/create — crea un router del tipo indicado (sin persistir).
@@ -58,9 +56,6 @@ public class RouterManagementGenericAdapter {
     /**
      * GET /router/retrieve/{id} — recupera un router del almacenamiento.
      *
-     * <p>Operativo una vez que el puerto de salida quede cableado en la fase de
-     * inyección de dependencias.
-     *
      * @return el {@link Router} recuperado
      */
     public Router retrieveRouter(Id id) {
@@ -69,9 +64,6 @@ public class RouterManagementGenericAdapter {
 
     /**
      * POST /router/persist — persiste un router.
-     *
-     * <p>Operativo una vez que el puerto de salida quede cableado en la fase de
-     * inyección de dependencias.
      *
      * @return el {@link Router} persistido
      */

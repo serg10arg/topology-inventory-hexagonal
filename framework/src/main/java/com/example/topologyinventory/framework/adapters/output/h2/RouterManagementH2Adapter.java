@@ -5,9 +5,10 @@ import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.vo.Id;
 import com.example.topologyinventory.framework.adapters.output.h2.data.RouterData;
 import com.example.topologyinventory.framework.adapters.output.h2.mappers.RouterH2Mapper;
-import jakarta.enterprise.inject.spi.CDI;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
-import jakarta.transaction.UserTransaction;
+import jakarta.transaction.Transactional;
 
 /**
  * Output adapter que implementa {@link RouterManagementOutputPort} usando JPA
@@ -18,89 +19,55 @@ import jakarta.transaction.UserTransaction;
  * dominio mediante {@link RouterH2Mapper}, de modo que el núcleo nunca ve tipos
  * de base de datos.
  *
- * <p><b>Cableado (Opción A, CDI-lite).</b> Este adapter NO es un bean CDI: lo
- * instancia {@link java.util.ServiceLoader} (por {@code module-info provides} en
- * el module path, por {@code META-INF/services} en el classpath de Quarkus). Al
- * no ser bean, no puede recibir el {@code EntityManager} por {@code @Inject} ni
- * usar {@code @Transactional}; por eso:
+ * <p><b>Cableado (CDI).</b> Este adapter es un bean {@code @ApplicationScoped}: lo
+ * descubre Arc por el índice Jandex y lo inyecta donde se declare
+ * {@link RouterManagementOutputPort} (en {@code RouterManagementInputPort}). Al
+ * ser bean:
  * <ul>
- *   <li>obtiene el {@link EntityManager} gestionado seleccionándolo del contenedor
- *       con la SPI estándar {@link CDI#current()} (no la API propietaria de Quarkus,
- *       para no acoplar el hexágono de framework a módulos Quarkus en su descriptor);</li>
- *   <li>demarca la transacción de forma programática con {@link UserTransaction}.</li>
+ *   <li>recibe el {@link EntityManager} gestionado por {@code @Inject}, en lugar de
+ *       seleccionarlo del contenedor con {@code CDI.current()};</li>
+ *   <li>delega la demarcación de la transacción en {@code @Transactional}, en lugar
+ *       de abrir y confirmar una {@code UserTransaction} a mano.</li>
  * </ul>
- * El adapter es <em>stateless</em>: no guarda EntityManager ni es singleton. Cada
- * operación abre y cierra su propia transacción, dentro de la cual el contexto de
- * persistencia está activo (necesario para que el mapper navegue las colecciones
- * perezosas al recuperar). Convertirlo en bean CDI ({@code @ApplicationScoped},
- * {@code @Inject}, {@code @Transactional}) es trabajo de la fase de CDI.
+ * El {@code EntityManager} inyectado es <em>transaction-scoped</em>: su contexto de
+ * persistencia se liga a la transacción que abre {@code @Transactional}, de modo que
+ * el mapper puede navegar las colecciones {@code @OneToMany} (perezosas) al recuperar
+ * sin lanzar {@code LazyInitializationException}.
+ *
+ * <p><b>Desviación respecto al libro (cap. 11).</b> El libro deja el
+ * {@code EntityManager} con {@code @PersistenceContext} y difiere su inyección al
+ * cap. 13; aquí se adelanta a {@code @Inject} porque este núcleo ya no arrastra el
+ * {@code Persistence.createEntityManagerFactory} que el libro conserva.
  */
+@ApplicationScoped
 public class RouterManagementH2Adapter implements RouterManagementOutputPort {
 
     /**
-     * Constructor público sin argumentos: es el que {@link java.util.ServiceLoader}
-     * exige en el camino de classpath ({@code META-INF/services}), donde el método
-     * {@code provider()} no se consulta. Sustituye al singleton de la fase anterior,
-     * innecesario ahora que el adapter no guarda estado.
+     * {@link EntityManager} gestionado por Quarkus, inyectado por el contenedor. Su
+     * contexto de persistencia queda ligado a la transacción activa que demarca
+     * {@link Transactional}.
      */
-    public RouterManagementH2Adapter() {
-    }
+    @Inject
+    EntityManager entityManager;
 
     @Override
+    @Transactional
     public Router retrieveRouter(Id id) {
-        var transaction = userTransaction();
-        try {
-            transaction.begin();
-            // La lectura y el mapeo van dentro de la transacción: el mapper navega
-            // las colecciones @OneToMany (perezosas), que fuera de una sesión activa
-            // lanzarían LazyInitializationException. find (no getReference) carga la
-            // entidad de inmediato.
-            var routerData = entityManager().find(RouterData.class, id.getId());
-            var router = RouterH2Mapper.routerDataToDomain(routerData);
-            transaction.commit();
-            return router;
-        } catch (Exception e) {
-            rollbackQuietly(transaction);
-            throw new RuntimeException("Fallo al recuperar el router " + id.getId(), e);
-        }
+        // La lectura y el mapeo van dentro de la transacción que abre @Transactional:
+        // el mapper navega las colecciones @OneToMany (perezosas), que fuera de una
+        // sesión activa lanzarían LazyInitializationException. find (no getReference)
+        // carga la entidad de inmediato.
+        var routerData = entityManager.find(RouterData.class, id.getId());
+        return RouterH2Mapper.routerDataToDomain(routerData);
     }
 
     @Override
+    @Transactional
     public Router persistRouter(Router router) {
-        // El mapeo dominio -> data es en memoria; puede hacerse fuera de la transacción.
+        // El mapeo dominio -> data es en memoria; queda dentro de la transacción, que
+        // @Transactional confirma al salir del método (rollback si algo lanza).
         var routerData = RouterH2Mapper.routerDomainToData(router);
-        var transaction = userTransaction();
-        try {
-            transaction.begin();
-            entityManager().persist(routerData);
-            transaction.commit();
-            return router;
-        } catch (Exception e) {
-            rollbackQuietly(transaction);
-            throw new RuntimeException(
-                    "Fallo al persistir el router " + router.getId().getId(), e);
-        }
-    }
-
-    /**
-     * Selecciona el {@link EntityManager} gestionado por Quarkus del contenedor CDI.
-     * Su contexto de persistencia queda ligado a la transacción JTA activa.
-     */
-    private EntityManager entityManager() {
-        return CDI.current().select(EntityManager.class).get();
-    }
-
-    /** Selecciona la {@link UserTransaction} del contenedor CDI (proveída por Narayana/JTA). */
-    private UserTransaction userTransaction() {
-        return CDI.current().select(UserTransaction.class).get();
-    }
-
-    /** Rollback de limpieza que nunca enmascara la excepción original. */
-    private static void rollbackQuietly(UserTransaction transaction) {
-        try {
-            transaction.rollback();
-        } catch (Exception ignored) {
-            // no-op: la excepción de negocio ya se propaga
-        }
+        entityManager.persist(routerData);
+        return router;
     }
 }

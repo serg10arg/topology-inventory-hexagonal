@@ -22,6 +22,18 @@
             <version>1.0-SNAPSHOT</version>
         </dependency>
 
+        <!--
+         ~ SPI estándar de CDI: aporta @ApplicationScoped e @Inject con las que los
+         ~ application services pasan a ser beans gestionados por Arc. Sin <version>: la
+         ~ gobierna el quarkus-bom importado en el POM raíz. Casa con 'requires jakarta.cdi'
+         ~ del module-info. En runtime, la implementación (Arc) la aporta bootstrap vía
+         ~ quarkus-arc.
+         -->
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.cucumber</groupId>
             <artifactId>cucumber-java</artifactId>

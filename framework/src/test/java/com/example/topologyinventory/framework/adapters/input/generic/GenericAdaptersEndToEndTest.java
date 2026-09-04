@@ -4,30 +4,32 @@ import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.EdgeRouter;
 import com.example.topologyinventory.domain.vo.*;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Test end-to-end del lado <em>driving</em>: entra por los generic adapters (la
- * "puerta de entrada" del sistema, base del futuro adapter REST) y recorre dos
- * caminos completos —la jerarquía del agregado en memoria y la persistencia, que
- * atraviesa los tres hexágonos: adapter de entrada → use case → puerto de salida
- * resuelto por {@code ServiceLoader} → output adapter de H2—. Que el
- * {@code ServiceLoader} resuelva aquí prueba que el binding JPMS
- * {@code provides}/{@code uses} funciona sin que el hexágono de application
- * conozca la clase concreta.
+ * Test end-to-end del lado <em>driving</em>: entra por los generic adapters (la "puerta de
+ * entrada" del sistema, base del futuro adapter REST) y recorre dos caminos completos —la
+ * jerarquía del agregado en memoria y la persistencia, que atraviesa los tres hexágonos:
+ * adapter de entrada → use case → puerto de salida → output adapter de H2—. Que la cadena
+ * router se resuelva aquí por {@code @Inject} prueba que el cableado CDI funciona sin que el
+ * hexágono de application conozca la clase concreta del output port.
  *
- * <p>Los fixtures respetan las reglas de dominio (specifications): misma
- * ubicación (mismo país) en toda la cadena, IPs distintas entre core, edge y
- * switch, y un CIDR válido (&gt;= 8) para la red. Un dato que violara una regla
- * haría fallar el test por el motivo equivocado.
+ * <p>El {@code routerAdapter} se obtiene por {@code @Inject} (bean CDI). Los adapters de
+ * switch y red se construyen aún con {@code new}: su migración a CDI es el siguiente
+ * sub-commit; hasta entonces resuelven su caso de uso por su propio constructor.
+ *
+ * <p>Los fixtures respetan las reglas de dominio (specifications): misma ubicación (mismo
+ * país) en toda la cadena, IPs distintas entre core, edge y switch, y un CIDR válido
+ * (&gt;= 8) para la red.
  */
 @QuarkusTest
 class GenericAdaptersEndToEndTest {
 
-    /** EDGE router semilla insertado por data.sql (no lo escribe ningún test). */
+    /** EDGE router semilla insertado por import.sql (no lo escribe ningún test). */
     private static final String SEEDED_EDGE_ROUTER_ID = "b832ef4f-f894-4194-8feb-a99c2cd4be0a";
 
     private static final Location LOCATION = Location.builder()
@@ -35,10 +37,12 @@ class GenericAdaptersEndToEndTest {
             .country("United States").latitude(42.79731f).longitude(-76.13075f)
             .build();
 
+    @Inject
+    RouterManagementGenericAdapter routerAdapter;
+
     @Test
     @DisplayName("e2e: crear y conectar la jerarquía core → edge → switch → red")
     void createAndConnectHierarchy() {
-        var routerAdapter = new RouterManagementGenericAdapter();
         var switchAdapter = new SwitchManagementGenericAdapter();
         var networkAdapter = new NetworkManagementGenericAdapter();
 
@@ -69,23 +73,14 @@ class GenericAdaptersEndToEndTest {
     }
 
     /**
-     * Round-trip por el adapter de entrada: persistir un router nuevo y volver a
-     * recuperarlo. Posible desde que {@code LocationData} pasó a ser
-     * {@code @Embeddable}: mientras la ubicación fue una entidad con PK propia,
-     * un router recién persistido quedaba sin {@code location_id} válido y
-     * releerlo fallaba.
-     *
-     * <p>El output adapter es un singleton con un único {@code EntityManager}, así
-     * que esta lectura puede servirse de su caché de primer nivel. Eso está bien
-     * para lo que este test afirma —el ida y vuelta por la puerta de entrada— y no
-     * lo invalida: la lectura contra disco la cubre {@link #retrieveSeededRouter()},
-     * que pide un router que ningún test ha escrito.
+     * Round-trip por el adapter de entrada: persistir un router nuevo y volver a recuperarlo.
+     * Con el {@code EntityManager} transaction-scoped, persistir y recuperar son ahora
+     * transacciones separadas, así que la lectura no se sirve de la caché de primer nivel:
+     * lee de H2 tras el commit del persist.
      */
     @Test
     @DisplayName("e2e: persistir y recuperar un router por el adapter de entrada")
     void persistAndRetrieveRouter() {
-        var routerAdapter = new RouterManagementGenericAdapter();
-
         var core = routerAdapter.createRouter(
                 Vendor.CISCO, Model.XYZ0001, IP.fromAddress("3.0.0.3"),
                 LOCATION, RouterType.CORE);
@@ -101,15 +96,12 @@ class GenericAdaptersEndToEndTest {
     }
 
     /**
-     * Lectura real desde H2 por la puerta de entrada: el router semilla no lo ha
-     * escrito ningún test, así que no puede venir de la caché del
-     * {@code EntityManager}.
+     * Lectura real desde H2 por la puerta de entrada: el router semilla no lo ha escrito
+     * ningún test, así que no puede venir de la caché del {@code EntityManager}.
      */
     @Test
     @DisplayName("e2e: recuperar un router semilla por el adapter de entrada")
     void retrieveSeededRouter() {
-        var routerAdapter = new RouterManagementGenericAdapter();
-
         var retrieved = routerAdapter.retrieveRouter(Id.withId(SEEDED_EDGE_ROUTER_ID));
 
         assertNotNull(retrieved, "el router semilla debería recuperarse por el adapter");

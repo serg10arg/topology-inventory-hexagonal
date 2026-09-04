@@ -6,49 +6,37 @@ import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.entity.factory.RouterFactory;
 import com.example.topologyinventory.domain.vo.*;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import lombok.NoArgsConstructor;
-
-import java.util.ServiceLoader;
 
 /**
  * Application service que implementa {@link RouterManagementUseCase}. Su papel es
- * <em>orquestar</em>: delega la creación en {@link RouterFactory}, las conexiones
- * en el agregado {@link CoreRouter} y la persistencia en el puerto de salida. No
- * contiene reglas de negocio.
+ * <em>orquestar</em>: delega la creación en {@link RouterFactory}, las conexiones en
+ * el agregado {@link CoreRouter} y la persistencia en el puerto de salida. No contiene
+ * reglas de negocio.
+ *
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: Arc lo comparte como
+ * única instancia y lo crea de forma perezosa (en la primera llamada). El puerto de
+ * salida llega por {@code @Inject}, no por {@code ServiceLoader}: Arc localiza el bean
+ * que implementa {@link RouterManagementOutputPort} (el output adapter de H2) sin que
+ * este hexágono conozca la clase concreta. Como esa dependencia es a su vez
+ * {@code @ApplicationScoped}, lo que se recibe es un <em>client proxy</em>; la instancia
+ * real —y con ella el arranque de la persistencia— no se materializa hasta la primera
+ * operación de persistir o recuperar. Así se conserva, sin código propio, la laziness
+ * que antes daba la resolución perezosa por {@code ServiceLoader}.
  */
 @NoArgsConstructor
+@ApplicationScoped
 public class RouterManagementInputPort implements RouterManagementUseCase {
 
     /**
-     * Puerto de salida hacia la persistencia. Se resuelve de forma perezosa a
-     * través de {@link #outputPort()}: no se inyecta por constructor (eso acoplaría
-     * la creación de este application service al arranque de la base de datos) sino
-     * que se obtiene vía {@link ServiceLoader} la primera vez que hace falta.
+     * Puerto de salida hacia la persistencia, provisto por el contenedor. Arc inyecta
+     * el bean que implementa {@link RouterManagementOutputPort}; su naturaleza de client
+     * proxy difiere el coste real (la conexión con H2) a la primera llamada.
      */
+    @Inject
     RouterManagementOutputPort routerManagementOutputPort;
-
-    /**
-     * Resuelve el puerto de salida bajo demanda y lo memoriza. El módulo application
-     * declara {@code uses RouterManagementOutputPort}; el módulo framework lo
-     * {@code provides} con su output adapter. ServiceLoader localiza esa
-     * implementación en el grafo de módulos sin que este hexágono conozca la clase
-     * concreta. Se resuelve solo al persistir o recuperar, de modo que crear,
-     * conectar y desconectar routers no arrastran el coste de la persistencia.
-     *
-     * @return la implementación del puerto de salida
-     * @throws IllegalStateException si no hay ningún proveedor en el module path
-     */
-    private RouterManagementOutputPort outputPort() {
-        if (routerManagementOutputPort == null) {
-            routerManagementOutputPort = ServiceLoader
-                    .load(RouterManagementOutputPort.class)
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "No hay ninguna implementación de RouterManagementOutputPort "
-                                    + "en el module path (¿falta el módulo framework?)"));
-        }
-        return routerManagementOutputPort;
-    }
 
     /** {@inheritDoc} Delega la construcción del tipo concreto en {@link RouterFactory}. */
     @Override
@@ -56,16 +44,16 @@ public class RouterManagementInputPort implements RouterManagementUseCase {
         return RouterFactory.getRouter(null, vendor, model, ip, location, routerType);
     }
 
-    /** {@inheritDoc} Delega en el puerto de salida, resuelto de forma perezosa. */
+    /** {@inheritDoc} Delega en el puerto de salida inyectado. */
     @Override
     public Router retrieveRouter(Id id) {
-        return outputPort().retrieveRouter(id);
+        return routerManagementOutputPort.retrieveRouter(id);
     }
 
-    /** {@inheritDoc} Delega en el puerto de salida, resuelto de forma perezosa. */
+    /** {@inheritDoc} Delega en el puerto de salida inyectado. */
     @Override
     public Router persistRouter(Router router) {
-        return outputPort().persistRouter(router);
+        return routerManagementOutputPort.persistRouter(router);
     }
 
     /** {@inheritDoc} La validación de la conexión ocurre dentro del agregado. */
