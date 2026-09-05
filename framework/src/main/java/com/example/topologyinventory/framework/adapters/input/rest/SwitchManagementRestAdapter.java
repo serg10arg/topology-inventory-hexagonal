@@ -19,6 +19,8 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 /**
  * Adapter de entrada REST (<em>driving</em>) para la gestión de switches.
@@ -42,6 +44,7 @@ import jakarta.ws.rs.core.Response;
  */
 @ApplicationScoped
 @Path("/switch")
+@Tag(name = "Switch Operations", description = "Alta, baja y conexión de switches a edge routers")
 public class SwitchManagementRestAdapter {
 
     @Inject
@@ -57,6 +60,7 @@ public class SwitchManagementRestAdapter {
      */
     @POST
     @Path("/create")
+    @Operation(operationId = "createSwitch", summary = "Crea un switch (en memoria)")
     public Uni<Response> createSwitch(CreateSwitchRequest request) {
         return Uni.createFrom()
                 .item(() -> switchManagementUseCase.createSwitch(
@@ -77,6 +81,7 @@ public class SwitchManagementRestAdapter {
      */
     @POST
     @Path("/add")
+    @Operation(operationId = "addSwitchToEdgeRouter", summary = "Crea un switch y lo conecta a un edge router")
     @Blocking
     public Uni<Response> addSwitchToEdgeRouter(AddSwitchRequest request) {
         return Uni.createFrom()
@@ -107,6 +112,7 @@ public class SwitchManagementRestAdapter {
      */
     @POST
     @Path("/remove")
+    @Operation(operationId = "removeSwitchFromEdgeRouter", summary = "Desconecta un switch de un edge router")
     @Blocking
     public Uni<Response> removeSwitchFromEdgeRouter(RemoveSwitchRequest request) {
         return Uni.createFrom()

@@ -20,6 +20,8 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 /**
  * Adapter de entrada REST (<em>driving</em>) para la gestión de redes.
@@ -40,6 +42,7 @@ import jakarta.ws.rs.core.Response;
  */
 @ApplicationScoped
 @Path("/network")
+@Tag(name = "Network Operations", description = "Alta, baja y conexión de redes a switches")
 public class NetworkManagementRestAdapter {
 
     @Inject
@@ -55,6 +58,7 @@ public class NetworkManagementRestAdapter {
      */
     @POST
     @Path("/create")
+    @Operation(operationId = "createNetwork", summary = "Crea una red (en memoria)")
     public Uni<Response> createNetwork(CreateNetworkRequest request) {
         return Uni.createFrom()
                 .item(() -> networkManagementUseCase.createNetwork(
@@ -72,6 +76,7 @@ public class NetworkManagementRestAdapter {
      */
     @POST
     @Path("/add")
+    @Operation(operationId = "addNetworkToSwitch", summary = "Crea una red y la añade a un switch")
     @Blocking
     public Uni<Response> addNetworkToSwitch(AddNetworkRequest request) {
         return Uni.createFrom()
@@ -100,6 +105,7 @@ public class NetworkManagementRestAdapter {
      */
     @POST
     @Path("/remove")
+    @Operation(operationId = "removeNetworkFromSwitch", summary = "Quita una red de un switch")
     @Blocking
     public Uni<Response> removeNetworkFromSwitch(RemoveNetworkRequest request) {
         return Uni.createFrom()

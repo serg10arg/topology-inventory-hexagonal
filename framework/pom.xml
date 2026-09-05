@@ -94,6 +94,17 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
+        <!--
+         ~ Contrato de la API: quarkus-smallrye-openapi genera el documento OpenAPI en
+         ~ /q/openapi a partir de las anotaciones JAX-RS y MicroProfile (@Tag, @Operation),
+         ~ y sirve la Swagger UI en /q/swagger-ui. Sin <version>: la gobierna el quarkus-bom.
+         ~ Casa con 'requires org.eclipse.microprofile.openapi' del module-info; la configuracion de
+         ~ la UI y del bloque info vive en el application.properties de bootstrap.
+         -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-openapi</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>

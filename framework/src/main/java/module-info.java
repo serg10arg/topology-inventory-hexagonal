@@ -41,6 +41,9 @@
  *   (Hibernate ORM clásico) es bloqueante.
  * Los dos últimos son módulos automáticos de SmallRye: no son API de Jakarta, pero tampoco
  * de Quarkus, y son la frontera mínima para expresar "reactivo con trabajo bloqueante".
+ * - 'requires org.eclipse.microprofile.openapi': '@Tag' y '@Operation', con las que los adapters
+ *   publican su contrato (tags y operationId) en el documento OpenAPI. Es API de MicroProfile,
+ *   estándar como las anteriores: el descriptor sigue sin conocer Quarkus.
  *
  * No se abren los paquetes de DTOs ('input.rest.request'/'response') a la reflexión de
  * Jackson: en runtime la aplicación corre en classpath plano (fast-jar y '@QuarkusTest' con
@@ -57,6 +60,7 @@ module framework {
     requires jakarta.ws.rs;
     requires io.smallrye.mutiny;
     requires io.smallrye.common.annotation;
+    requires org.eclipse.microprofile.openapi;
 
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;

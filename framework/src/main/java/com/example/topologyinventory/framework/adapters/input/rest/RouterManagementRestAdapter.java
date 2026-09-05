@@ -18,6 +18,8 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 /**
  * Adapter de entrada REST (<em>driving</em>) para la gestión de routers. Es la puerta HTTP
@@ -57,6 +59,7 @@ import jakarta.ws.rs.core.Response;
  */
 @ApplicationScoped
 @Path("/router")
+@Tag(name = "Router Operations", description = "Alta, baja, conexión y consulta de routers")
 public class RouterManagementRestAdapter {
 
     @Inject
@@ -69,6 +72,7 @@ public class RouterManagementRestAdapter {
      */
     @GET
     @Path("/retrieve/{id}")
+    @Operation(operationId = "retrieveRouter", summary = "Recupera un router por su id")
     @Blocking
     public Uni<Response> retrieveRouter(@PathParam("id") String id) {
         return Uni.createFrom()
@@ -86,6 +90,7 @@ public class RouterManagementRestAdapter {
      */
     @POST
     @Path("/create")
+    @Operation(operationId = "createRouter", summary = "Crea y persiste un router")
     @Blocking
     public Uni<Response> createRouter(CreateRouterRequest request) {
         return Uni.createFrom()
@@ -110,6 +115,7 @@ public class RouterManagementRestAdapter {
      */
     @POST
     @Path("/add")
+    @Operation(operationId = "addRouterToCoreRouter", summary = "Conecta un router a un core router")
     @Blocking
     public Uni<Response> addRouterToCoreRouter(AddRouterRequest request) {
         return Uni.createFrom()
@@ -137,6 +143,7 @@ public class RouterManagementRestAdapter {
      */
     @POST
     @Path("/remove")
+    @Operation(operationId = "removeRouterFromCoreRouter", summary = "Desconecta un router de un core router")
     @Blocking
     public Uni<Response> removeRouterFromCoreRouter(RemoveRouterRequest request) {
         return Uni.createFrom()
