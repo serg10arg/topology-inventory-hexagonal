@@ -78,6 +78,23 @@
             <artifactId>jakarta.transaction-api</artifactId>
         </dependency>
 
+        <!--
+         ~ Frontera REST (lado de entrada): quarkus-rest es RESTEasy Reactive (nombre
+         ~ vigente desde Quarkus 3.9; antes quarkus-resteasy-reactive) y quarkus-rest-jackson
+         ~ aporta la (de)serializacion JSON de los DTOs. Sin <version>: los gobierna el
+         ~ quarkus-bom. Casan con 'requires jakarta.ws.rs', 'io.smallrye.mutiny' e
+         ~ 'io.smallrye.common.annotation' del module-info; los dos ultimos llegan
+         ~ transitivamente por quarkus-rest.
+         -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -93,6 +110,16 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+         ~ REST Assured: cliente HTTP para probar los endpoints del adapter REST por HTTP
+         ~ real contra el servidor que levanta @QuarkusTest. Sin <version>: la gobierna el
+         ~ quarkus-bom.
+         -->
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

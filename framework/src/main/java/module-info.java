@@ -29,6 +29,23 @@
  * application declara '@Inject'. Se retiró la cláusula 'provides ... with ...' (y su binding
  * gemelo META-INF/services): la resolución del puerto de salida ya no la hace ServiceLoader,
  * sino el contenedor CDI.
+ *
+ * Costura JAX-RS (lado de entrada):
+ * - 'requires jakarta.ws.rs': las anotaciones del recurso REST ('@Path', '@GET', '@POST',
+ *   '@PathParam') y el tipo Response. Es de nuevo SPI estándar de Jakarta, no una API de
+ *   Quarkus: el descriptor sigue sin 'requires' de ningún módulo Quarkus.
+ * - 'requires io.smallrye.mutiny': el tipo Uni que devuelven los endpoints (modelo reactivo
+ *   de RESTEasy Reactive).
+ * - 'requires io.smallrye.common.annotation': '@Blocking', con el que los endpoints se
+ *   despachan a un worker thread en lugar del event loop, porque la persistencia por debajo
+ *   (Hibernate ORM clásico) es bloqueante.
+ * Los dos últimos son módulos automáticos de SmallRye: no son API de Jakarta, pero tampoco
+ * de Quarkus, y son la frontera mínima para expresar "reactivo con trabajo bloqueante".
+ *
+ * No se abren los paquetes de DTOs ('input.rest.request'/'response') a la reflexión de
+ * Jackson: en runtime la aplicación corre en classpath plano (fast-jar y '@QuarkusTest' con
+ * useModulePath=false), donde el encapsulamiento de JPMS no aplica. Es el mismo motivo por el
+ * que Arc no necesitó 'opens' para sus proxies en la Fase 6.
  */
 module framework {
     requires domain;
@@ -37,6 +54,9 @@ module framework {
     requires jakarta.persistence;
     requires jakarta.cdi;
     requires jakarta.transaction;
+    requires jakarta.ws.rs;
+    requires io.smallrye.mutiny;
+    requires io.smallrye.common.annotation;
 
     exports com.example.topologyinventory.framework.adapters.output.h2.data;
     opens com.example.topologyinventory.framework.adapters.output.h2.data;
