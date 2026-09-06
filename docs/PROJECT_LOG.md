@@ -285,3 +285,84 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
   sueltos); los adapters de entrada siguen siendo genéricos (POJOs invocados desde el
   `main` y los tests), a la espera del adapter REST.
 - **Siguiente:** Fase 7 · API REST reactiva.
+
+---
+
+## Fase 7 · API REST reactiva
+
+- **Estado:** ✅ completada
+- **Entregado:**
+    - **SC1 — Adapter REST reactivo de router (rebanada vertical):**
+      `RouterManagementRestAdapter` (`@Path("/router")`, bean `@ApplicationScoped`)
+      expone el caso de uso de router como endpoints `Uni<Response>` con `@Blocking`.
+      DTOs de frontera: `CreateRouterRequest`/`AddRouterRequest`/`RemoveRouterRequest`
+      + `LocationRequest` (entrada), `RouterResponse`/`LocationResponse` (salida,
+      superficial: hijos como ids). Costura JPMS en `framework`:
+      `+requires jakarta.ws.rs, io.smallrye.mutiny, io.smallrye.common.annotation`.
+      Deps: `quarkus-rest`, `quarkus-rest-jackson`, `rest-assured` (test).
+    - **SC2 — Adapters REST de switch y red:** `SwitchManagementRestAdapter` y
+      `NetworkManagementRestAdapter` con el mismo patrón; los `create` operan en
+      memoria (este núcleo no persiste switch/red), y `add`/`remove` recuperan el
+      edge router por id, mutan el agregado en memoria y lo devuelven (`@Blocking`).
+      Puramente aditivo: no tocó `module-info` ni el POM.
+    - **SC3 — OpenAPI + Swagger UI:** `@Tag`/`@Operation` en los tres adapters,
+      `quarkus-smallrye-openapi`, `+requires org.eclipse.microprofile.openapi`,
+      config de Swagger UI y bloque `info` en `bootstrap`. `OpenApiContractTest`
+      verifica que `/q/openapi` publica los tres tags y los `operationId`.
+    - **SC4 — Server mode + retirada de la capa `generic`:** `Application` pasa a
+      un `main` plano con `Quarkus.run(args)` (deja de apagar el servidor con el
+      `return 0` del command mode); se retira el flujo demo (cubierto por los tests
+      REST). Al no inyectar ya el generic adapter, la capa `generic` queda huérfana
+      y se borra (3 adapters + `GenericAdaptersEndToEndTest`), junto con el
+      `exports ...input.generic` de `framework` y el `requires jakarta.inject` de
+      `bootstrap`.
+    - **SC5 — Documentación:** este bloque, README raíz (stack, arquitectura,
+      estado → ✅), READMEs de `framework` y `bootstrap`, y corrección de los
+      comentarios caducados del `framework/pom.xml` (deuda de la Fase 6).
+- **Decisiones y hallazgos:**
+    - **El servidor ya arrancaba; command mode lo apagaba.** Con `quarkus-rest` en
+      el classpath, el `quarkus-run.jar` levantaba el HTTP server (`Listening on:
+      0.0.0.0:8080`) pero `run()` devolvía 0 y Quarkus ordenaba el shutdown. SC4 no
+      "activó" el servidor: impidió que la app lo cerrara.
+    - **La costura son módulos explícitos, no automáticos.** `quarkus-rest`/
+      `-jackson` resolvieron del BOM sin caer en los antiguos `resteasy-reactive*`;
+      `io.smallrye.mutiny`, `io.smallrye.common.annotation` y (corregido)
+      `org.eclipse.microprofile.openapi` traen `module-info.class` propio. El nombre
+      derivado del artefacto (`microprofile.openapi.api`) falló: en 4.1.1 el jar ya
+      es módulo explícito.
+    - **La predicción de classpath plano se sostuvo toda la fase.** Cero `opens`
+      nuevos: Jackson (de)serializó los DTOs y SmallRye leyó las anotaciones vía
+      Jandex, sin abrir `input.rest.request`/`response`. Mismo colapso que SC3 de
+      la Fase 6.
+    - **El `RouterResponse` superficial funciona por HTTP real.** El cuerpo del
+      router semilla proyecta los tres hijos edge como ids con `switchIds:[]`: el
+      corte del grafo en la frontera evita navegar el `@OneToMany` fuera de sesión.
+    - **`@Blocking` solo donde se toca persistencia.** Router (todos) y switch/red
+      (`add`/`remove`, que recuperan el edge); los `create` de switch/red, en
+      memoria, corren sin `@Blocking`.
+- **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
+
+    | # | Decisión | Motivo | Evidencia |
+    |---|----------|--------|-----------|
+    | 1 | La capa `generic` se **promueve** a `rest` (la referencia la reemplaza en el cap. 12); aquí en dos mitades: añadir `rest` (SC1–2), retirar `generic` (SC4) | El REST adapter y el generic hacían el mismo trabajo; mantener ambos sería *passthrough* sin valor | 14 verdes tras el borrado; los caminos e2e quedan cubiertos por los tests REST Assured |
+    | 2 | DTOs de **salida** (la referencia serializa la entidad de dominio en la `Response`) | No exponer el modelo interno ni las colecciones perezosas | Cuerpo real: hijos como ids, `switchIds:[]`; sin `LazyInitializationException` |
+    | 3 | DTOs de entrada **planos** + `LocationRequest` (la referencia incrusta value objects + deserializadores a medida) | `Location` no tiene constructor sin-args; así se evitan los deserializadores | Cero deserializadores; Jackson (de)serializó sin `opens` |
+    | 4 | Path params `String` + `Id.withId(...)` (la referencia usa `Id` + `ParamConverter` y `getUuid()`) | Evita la maquinaria del converter; este núcleo expone `Id.getId()`, no `getUuid()` | `GET /router/retrieve/{id}` 200 con el id semilla |
+    | 5 | `Uni<Response>` + `@Blocking` en endpoints que persisten (la referencia no marca `@Blocking`) | Hibernate ORM es bloqueante; en el event loop lanzaría `BlockingOperationNotAllowedException` | Reactor y `@QuarkusTest` verdes; sin excepción de bloqueo |
+    | 6 | Switch/red **en memoria**, sin persistencia (la referencia persiste vía el agregado router y tiene `retrieveSwitch`/output port) | Este núcleo no define persistencia de switch/red (no hay `SwitchManagementH2Adapter`) | `create` efímeros; `add`/`remove` recuperan el edge, mutan y devuelven, sin persistir |
+    | 7 | Sin `DELETE /router/{id}` (la referencia tiene `removeRouter(id)`) | El caso de uso de este núcleo no expone `removeRouter(id)` | Firma de `RouterManagementUseCase` |
+    | 8 | `POST /router/create` funde crear + persistir (mapeo 1:1 daría un `create` efímero y un `persist` que recibiría la entidad completa) | Ergonomía REST: un alta que no guarda devuelve un recurso inexistente | Round-trip `createAndRetrieveRouter` verde |
+    | 9 | Command mode → **server mode** con `Quarkus.run` (patrón del `App.java` de la referencia) | Un servicio HTTP debe quedarse arriba; el `return 0` apagaba el servidor | Proceso vivo tras servir; `router:200 openapi:200 swagger:200` |
+
+- **Verificación:** `mvn clean install` en verde en todo el reactor — `domain` 19,
+  `application` 12 (Cucumber), `framework` 14 (`@QuarkusTest`, 0 skipped: Router REST 4,
+  Switch REST 3, Network REST 3, H2 2, OpenAPI 2) —; el `quarkus-run.jar` arranca en
+  **server mode** y se queda escuchando en `0.0.0.0:8080`, respondiendo `200` a
+  `GET /router/retrieve/{id}`, `/q/openapi` y `/q/swagger-ui/` (esta última en el
+  fast-jar gracias a `always-include=true`).
+- **Deuda conocida que entra en la siguiente fase:** el `@OneToMany` de `RouterData`
+  sigue sin cascade; ahora se nota en REST: `switch/add` y `network/add` recuperan el
+  agregado, lo mutan y lo devuelven, pero **no persisten** la conexión. Cerrarlo va de
+  la mano de la persistencia reactiva.
+- **Siguiente:** Fase 8 · Persistencia reactiva (Hibernate Reactive): permitirá retirar
+  los `@Blocking` y abordar la persistencia del agregado con hijos.

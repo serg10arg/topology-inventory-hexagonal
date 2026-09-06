@@ -18,8 +18,8 @@ de runtime de la persistencia.
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
-| **Punto de entrada Quarkus** | La clase `@QuarkusMain` que arranca el contenedor y ejecuta el flujo de punta a punta. | `Application` (`implements QuarkusApplication`) |
-| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos, la SPI de inyección y el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, jakarta.inject, quarkus.core`) |
+| **Punto de entrada Quarkus** | La clase `@QuarkusMain` que arranca el contenedor y lo mantiene sirviendo HTTP. | `Application` (`main` → `Quarkus.run(args)`) |
+| **Descriptor del módulo** | Declara la dependencia con los tres hexágonos y el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, quarkus.core`) |
 | **Configuración de runtime** | Datasource H2 + Hibernate ORM y seed de la base. | `application.properties`, `import.sql` |
 
 ## ¿Por qué se implementó así?
@@ -41,21 +41,22 @@ de runtime de la persistencia.
 ## ¿Cómo se implementó?
 
 - Como un **módulo Java** (JPMS) que `requires` a `domain`, `application`,
-  `framework`, `jakarta.inject` y `quarkus.core`. `framework` aporta transitivamente
-  Hibernate ORM y H2 en runtime.
-- La clase `Application`, anotada `@QuarkusMain` e implementando `QuarkusApplication`,
-  ejecuta su lógica en `run(...)` **después** de que Quarkus arranque el contenedor.
-  Se ejecuta en **command mode**: realiza el flujo (crea y persiste un router contra
-  H2, lo recupera, y conecta un edge en memoria) y termina con código 0.
-- El cableado es **CDI de punta a punta**: `Application` recibe el generic adapter
-  por `@Inject` (como bean gestionado en command mode), que a su vez inyecta el caso
-  de uso, que inyecta el output adapter, que recibe su `EntityManager` por `@Inject`.
-  No queda ningún `new` de colaboradores ni `ServiceLoader` en la cadena.
+  `framework` y `quarkus.core`. `framework` aporta transitivamente Hibernate ORM, H2 y
+  RESTEasy Reactive en runtime.
+- La clase `Application`, anotada `@QuarkusMain`, arranca el contenedor con
+  `Quarkus.run(args)` en su `main`: en **server mode**, Quarkus enciende Arc, el
+  datasource, Hibernate, el seed y el servidor HTTP de RESTEasy Reactive, y **bloquea
+  sirviendo** hasta el shutdown. La app dejó de ser un programa que corre y termina.
+- El cableado es **CDI de punta a punta**, resuelto por Arc bajo demanda en cada
+  petición: el REST adapter inyecta el caso de uso, que inyecta el output adapter, que
+  recibe su `EntityManager` por `@Inject`. No queda ningún `new` de colaboradores ni
+  `ServiceLoader` en la cadena; `Application` ya no inyecta nada (por eso `bootstrap`
+  dejó de `requires jakarta.inject`).
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
-| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos, `jakarta.inject` y `quarkus.core`; cierra el grafo de módulos |
+| JPMS (Java Modules) | Declara la dependencia con los tres hexágonos y `quarkus.core`; cierra el grafo de módulos |
 | Quarkus 3.33 | Runtime cloud-native: arranca el contenedor (Arc), gestiona la inyección y la persistencia |
 | Hibernate ORM (vía Quarkus) | Proveedor JPA configurado en `application.properties` |
 | Maven | Construcción multi-módulo; `quarkus-maven-plugin` produce la app |
@@ -74,11 +75,11 @@ sobre Quarkus, sin añadir reglas ni tecnología de negocio propias.
 
 ## Estado actual
 
-Implementado y operativo bajo Quarkus. `Application` arranca el contenedor y, en
-command mode, ejecuta el flujo de punta a punta contra H2: Arc inyecta la cadena de
-beans (generic adapter → caso de uso → output adapter → `EntityManager`), el router
-persistido se recupera con sus datos, y el proceso termina con código 0. La base H2
-es en memoria y efímera (demostración del flujo, no un almacén persistente).
+Implementado y operativo bajo Quarkus en **server mode**. `Application` arranca el
+contenedor con `Quarkus.run` y se mantiene escuchando en el puerto 8080: Arc cablea la
+cadena de beans (REST adapter → caso de uso → output adapter → `EntityManager`) bajo
+demanda para atender cada petición. El contrato de la API está en `/q/openapi` y la UI
+en `/q/swagger-ui/`. La base H2 es en memoria y vive mientras viva el proceso.
 
 ## ¿Cómo se relaciona con el proyecto?
 

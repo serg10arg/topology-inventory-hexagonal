@@ -20,6 +20,10 @@ desarrolla de forma incremental, añadiendo capacidades por fases.
 | Hibernate ORM | Quarkus BOM | Proveedor JPA gestionado por Quarkus; genera el DDL desde las entidades |
 | H2 | Quarkus BOM | Base de datos en memoria (driver `quarkus-jdbc-h2`) |
 | Agroal / Narayana JTA | Quarkus BOM | Pool de conexiones y transacciones (`@Transactional`) |
+| RESTEasy Reactive (Quarkus REST) | Quarkus BOM | Input adapters HTTP reactivos (`quarkus-rest` / `quarkus-rest-jackson`) |
+| SmallRye Mutiny | Quarkus BOM | Tipo reactivo `Uni` en los endpoints |
+| MicroProfile OpenAPI + Swagger UI | Quarkus BOM | Contrato de la API (`/q/openapi`) y UI navegable (`/q/swagger-ui`) |
+| REST Assured | Quarkus BOM | Ejercita los endpoints por HTTP en los `@QuarkusTest` |
 | Jandex (SmallRye) | 3.5.3 | Índice de clases en build-time (descubrimiento de entidades y beans entre módulos) |
 | JUnit | 5.11.x · 6.0.3 (framework) | Tests unitarios y de integración (`@QuarkusTest`) |
 | Cucumber | 7.20.x | Tests de aceptación (BDD) sobre JUnit 5 Platform |
@@ -39,15 +43,21 @@ dirección de dependencia siempre apunta hacia adentro: el negocio no conoce la
 tecnología, y por eso puede evolucionar sin verse arrastrado por cambios de
 framework.
 
-Sobre esa base, el runtime cloud-native arranca con Quarkus: el módulo `bootstrap`
-enciende el contenedor (`@QuarkusMain`), y los puertos, casos de uso y adapters se
-gestionan como **beans CDI** que se enchufan entre sí por `@Inject` —el output
-adapter recibe su `EntityManager` gestionado y delega la transacción en
-`@Transactional`—. Arc descubre esos beans en build-time a través del índice
-Jandex. Los hexágonos declaran solo la **SPI estándar** (`jakarta.cdi`), que Arc
-satisface en runtime, de modo que el acoplamiento a Quarkus permanece confinado en
-`bootstrap`: ni el dominio ni la aplicación llegan a conocer el framework de
-arranque.
+Sobre esa base, el runtime cloud-native corre sobre Quarkus. Una petición HTTP entra
+por un **input adapter REST reactivo** (`RouterManagementRestAdapter` y sus pares de
+switch y red), que devuelve `Uni<Response>` y, al llegar la operación hasta Hibernate
+ORM —bloqueante—, se marca `@Blocking` para ejecutarse en un *worker thread* en lugar
+del *event loop*. El adapter traduce la petición a DTOs de frontera (sin exponer
+entidades de dominio ni de persistencia), delega en el caso de uso y proyecta la
+respuesta a DTOs superficiales (los hijos del agregado viajan como ids). Los puertos,
+casos de uso y el output adapter se gestionan como **beans CDI** enchufados por
+`@Inject`; el output adapter recibe su `EntityManager` gestionado y delega la
+transacción en `@Transactional`. Arc descubre los beans en build-time por el índice
+Jandex. Los hexágonos declaran solo **SPI estándar** (`jakarta.cdi`, `jakarta.ws.rs`,
+MicroProfile OpenAPI), de modo que el acoplamiento a Quarkus permanece confinado en
+`bootstrap`. El módulo `bootstrap` arranca el contenedor con `@QuarkusMain` +
+`Quarkus.run(...)` y **se mantiene sirviendo** hasta el shutdown; el contrato de la API
+se publica en `/q/openapi` y se explora en `/q/swagger-ui`.
 
 ## Módulos
 
@@ -55,8 +65,8 @@ arranque.
 |---------------|----------|-----------------|
 | `domain` | Domain | Entities, value objects, domain services y specifications |
 | `application` | Application | Use cases e input/output ports, gestionados como beans CDI |
-| `framework` | Framework | Input/output adapters (beans CDI): persistencia H2/JPA con Hibernate ORM gestionado por Quarkus (salida) y adapters genéricos de entrada |
-| `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación bajo Quarkus (`@QuarkusMain`); única costura con `quarkus.core` |
+| `framework` | Framework | Input/output adapters (beans CDI): input adapters **REST reactivos** con DTOs de frontera (entrada) y persistencia H2/JPA con Hibernate ORM gestionado por Quarkus (salida) |
+| `bootstrap` | — | Ensambla los hexágonos y arranca la aplicación bajo Quarkus (`@QuarkusMain` + `Quarkus.run`, **server mode**); única costura con `quarkus.core` |
 
 ## Decisiones técnicas
 
@@ -75,9 +85,15 @@ arranque.
   `@Inject` y demarca la transacción con `@Transactional`. Los hexágonos requieren
   solo la SPI estándar `jakarta.cdi` —no módulos de Quarkus—, que Arc satisface en
   runtime; así el acoplamiento a Quarkus queda confinado en `bootstrap`.
-- **Quarkus 3.33 (LTS)** por su arranque rápido y su enfoque cloud-native; la
-  costura JPMS↔Quarkus queda solo en el módulo `bootstrap` (`@QuarkusMain`,
-  command mode).
+- **API REST reactiva sobre SPI estándar:** los input adapters usan JAX-RS
+  (`jakarta.ws.rs`) y devuelven `Uni` (Mutiny), con `@Blocking` en los endpoints que
+  tocan la persistencia bloqueante; el contrato se documenta con MicroProfile OpenAPI.
+  DTOs de entrada/salida aíslan la frontera: ni el dominio ni las entidades de
+  persistencia viajan por HTTP. La costura JAX-RS/OpenAPI son módulos estándar de
+  Jakarta/MicroProfile, no de Quarkus.
+- **Quarkus 3.33 (LTS)** por su arranque rápido y su enfoque cloud-native; la app corre
+  en **server mode** (`@QuarkusMain` + `Quarkus.run`, se mantiene sirviendo HTTP) y la
+  costura JPMS↔Quarkus queda solo en el módulo `bootstrap`.
 
 ## Ejecución
 
@@ -93,11 +109,18 @@ mvn -pl domain test
 # Empaquetar la aplicación Quarkus (fast-jar)
 mvn clean package
 
-# Ejecutar el flujo de demostración (command mode): arranca, persiste y recupera, y termina
+# Arrancar el servicio HTTP (server mode): se queda escuchando en el puerto 8080
 java -jar bootstrap/target/quarkus-app/quarkus-run.jar
 
 # Modo dev con recarga en caliente
 mvn -pl bootstrap -am quarkus:dev
+```
+
+Con el servicio arriba, el contrato de la API está en `http://localhost:8080/q/openapi`
+y la UI navegable en `http://localhost:8080/q/swagger-ui/`. Ejemplo de llamada:
+
+```bash
+curl http://localhost:8080/router/retrieve/b832ef4f-f894-4194-8feb-a99c2cd4be0c
 ```
 
 ## Estado del proyecto
@@ -110,7 +133,7 @@ mvn -pl bootstrap -am quarkus:dev
 | 4 | Inversión de dependencias entre módulos (JPMS) | ✅     |
 | 5 | Integración cloud-native con Quarkus | ✅     |
 | 6 | Gestión del ciclo de vida con CDI | ✅     |
-| 7 | API REST reactiva | ⏸️      |
+| 7 | API REST reactiva | ✅     |
 | 8 | Persistencia reactiva | ⏸️      |
 | 9 | Contenedores y despliegue (Docker / Kubernetes) | ⏸️      |
 | 10 | Endurecimiento y buenas prácticas | ⏸️      |

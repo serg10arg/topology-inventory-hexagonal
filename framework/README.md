@@ -14,14 +14,16 @@ entre el idioma del gestor (las entidades del dominio) y el formato del archivo
 ## ¿Qué se implementó?
 
 Ambos lados del hexágono: el **lado de salida** (*driven*), con la implementación
-concreta del puerto de persistencia sobre H2 con JPA y la traducción dominio↔base
-de datos; y el **lado de entrada** (*driving*), con los adapters genéricos que
-reciben la petición y la reenvían al caso de uso.
+concreta del puerto de persistencia sobre H2 con JPA y la traducción dominio↔base de
+datos; y el **lado de entrada** (*driving*), con los **input adapters REST reactivos**
+que reciben la petición HTTP, la traducen a DTOs de frontera y la delegan en el caso de
+uso.
 
 | Pieza | Qué es | Ejemplos |
 |---|---|---|
 | **Output adapter** | La implementación concreta de un puerto de salida sobre una tecnología, gestionada como bean CDI. | `RouterManagementH2Adapter` |
-| **Input adapters** | Los puntos de entrada del sistema (base del futuro adapter REST), gestionados como beans CDI. | `RouterManagementGenericAdapter`, `SwitchManagementGenericAdapter`, `NetworkManagementGenericAdapter` |
+| **Input adapters (REST)** | Los puntos de entrada HTTP del sistema: recursos JAX-RS que devuelven `Uni<Response>`, con DTOs de frontera y `@Blocking` donde tocan persistencia. Beans CDI. | `RouterManagementRestAdapter`, `SwitchManagementRestAdapter`, `NetworkManagementRestAdapter` |
+| **DTOs de frontera** | Objetos de entrada/salida que aíslan el dominio del contrato HTTP. La salida es superficial (hijos como ids). | `CreateRouterRequest`, `LocationRequest`, `RouterResponse`, `SwitchResponse`, `NetworkResponse` |
 | **Modelo de persistencia** | Clases espejo orientadas a la base de datos, sin lógica de negocio. | `RouterData`, `SwitchData`, `NetworkData`, `LocationData`, `IPData`, los enums `*Data` |
 | **Mapper** | El traductor entre las entidades del dominio y su espejo de persistencia. | `RouterH2Mapper` |
 | **Configuración de persistencia** | La gestiona Quarkus desde el módulo de arranque: datasource, generación de esquema y semilla. | `application.properties`, `import.sql` (en `bootstrap`) |
@@ -51,9 +53,11 @@ reciben la petición y la reenvían al caso de uso.
   transacción en `@Transactional`, sin abrirla ni confirmarla a mano. Los input
   adapters son también beans `@ApplicationScoped` que reciben su caso de uso por
   `@Inject`.
-- El módulo declara solo la **SPI estándar de Jakarta** (`jakarta.cdi`,
-  `jakarta.transaction`, `jakarta.persistence`), no módulos de Quarkus: Arc la
-  satisface en runtime, de modo que este hexágono no `requires` nada de Quarkus.
+- El módulo declara solo **SPI estándar de Jakarta/MicroProfile** (`jakarta.cdi`,
+  `jakarta.transaction`, `jakarta.persistence`, `jakarta.ws.rs`, MicroProfile OpenAPI) y
+  las librerías reactivas (`io.smallrye.mutiny`, `io.smallrye.common.annotation`), no
+  módulos de Quarkus: Arc y RESTEasy Reactive las satisfacen en runtime, de modo que
+  este hexágono no `requires` nada de Quarkus.
 - Las entidades de persistencia usan **JPA (`jakarta.persistence`)** con UUID
   nativo. El paquete de entidades se **abre por reflexión** al proveedor
   (Hibernate) en el `module-info` para que pueda acceder a sus campos privados.
@@ -84,18 +88,20 @@ concreto de lo que la aplicación pide, sin contener reglas ni orquestación.
 
 ## Estado actual
 
-Los **dos lados están implementados, gestionados por CDI y verificados**. El de
-salida enchufa el puerto de persistencia del router sobre H2 con JPA: el output
-adapter es un bean `@ApplicationScoped` que Arc inyecta donde `application` declara
-el puerto, con el `EntityManager` por `@Inject` y la transacción por
-`@Transactional`. El de entrada son los generic adapters —beans CDI, hoy la base
-del futuro adapter REST—, con `retrieveRouter`/`persistRouter` operativos.
+Los **dos lados están implementados, gestionados por CDI y verificados**. El de salida
+enchufa el puerto de persistencia del router sobre H2 con JPA: el output adapter es un
+bean `@ApplicationScoped` que Arc inyecta donde `application` declara el puerto, con el
+`EntityManager` por `@Inject` y la transacción por `@Transactional`. El de entrada son
+los **REST adapters reactivos** (`/router`, `/switch`, `/network`): devuelven
+`Uni<Response>`, marcan `@Blocking` donde tocan Hibernate, y traducen entre DTOs de
+frontera y el dominio. El contrato se publica con MicroProfile OpenAPI (`@Tag`/
+`@Operation`) en `/q/openapi`.
 
-Las pruebas del módulo (5) corren bajo `@QuarkusTest` y cubren la integración del
-output adapter contra H2 y el recorrido end-to-end por los generic adapters (que,
-al inyectarse los tres, hace además de *smoke test* del grafo de cableado).
-**Deuda conocida:** los `@OneToMany` del modelo de persistencia no cascadan, así
-que todavía no se guarda el agregado con sus hijos (solo routers sueltos).
+Las pruebas del módulo (14) corren bajo `@QuarkusTest` + REST Assured y cubren los
+endpoints de router, switch y red por HTTP real, la integración del output adapter
+contra H2, y el contrato OpenAPI. **Deuda conocida:** los `@OneToMany` del modelo de
+persistencia no cascadan, así que `switch/add` y `network/add` recuperan el agregado,
+lo mutan y lo devuelven, pero aún no persisten la conexión (solo routers sueltos).
 
 ## ¿Cómo se relaciona con el proyecto?
 

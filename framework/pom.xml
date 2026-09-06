@@ -64,8 +64,9 @@
             <artifactId>quarkus-agroal</artifactId>
         </dependency>
         <!--
-         ~ SPI estandar de Jakarta con la que el output adapter (no es bean CDI)
-         ~ toma del contenedor el EntityManager (CDI.current()) y la UserTransaction.
+         ~ SPI estandar de Jakarta con la que los beans del framework (output adapter,
+         ~ REST adapters) usan @ApplicationScoped e @Inject; el output adapter recibe el
+         ~ EntityManager por @Inject y demarca la transaccion con @Transactional.
          ~ Sin <version>: la gobierna el quarkus-bom. Casan con 'requires jakarta.cdi'
          ~ y 'requires jakarta.transaction' del module-info.
          -->
@@ -115,8 +116,8 @@
         <!--
          ~ Test de integracion bajo Quarkus: @QuarkusTest arranca el contenedor
          ~ (Arc + EntityManager + seed del perfil 'test') para ejercitar el round-trip
-         ~ real del output adapter. Los tests corren en classpath, donde ServiceLoader
-         ~ resuelve el output port via META-INF/services.
+         ~ real del output adapter y los endpoints REST. Los tests corren en classpath
+         ~ plano; Arc descubre e inyecta los beans por el indice Jandex.
          -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -139,13 +140,11 @@
         <plugins>
             <!--
              ~ Los tests de este modulo corren en CLASSPATH, no en module path.
-             ~ Surefire, al ver el module-info de src/main, arrancaba el JVM de test
-             ~ con module path: el 'provides' del descriptor cargaba una SEGUNDA copia
-             ~ del output adapter con el classloader del sistema, mientras @QuarkusTest
-             ~ trabaja con la suya en el QuarkusClassLoader. ServiceLoader las cruzaba
-             ~ y fallaba con "not a subtype" pese a que ambas clases eran correctas.
-             ~ En classpath solo queda el binding de META-INF/services, que es el que
-             ~ Quarkus usa tambien en produccion.
+             ~ @QuarkusTest arranca la app en su QuarkusClassLoader y Arc descubre los
+             ~ beans por el indice Jandex. Si Surefire, al ver el module-info de src/main,
+             ~ arrancara el JVM de test en module path, los tipos quedarian bajo un grafo
+             ~ de modulos distinto al del QuarkusClassLoader y cruzarian classloaders.
+             ~ Con useModulePath=false ambos comparten el mismo classpath plano.
              -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
