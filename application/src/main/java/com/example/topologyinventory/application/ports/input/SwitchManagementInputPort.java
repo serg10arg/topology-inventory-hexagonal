@@ -13,7 +13,7 @@ import jakarta.enterprise.context.ApplicationScoped;
  *
  * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: no inyecta nada (esta
  * rama no tiene puerto de salida —la persistencia va solo por el agregado router—), pero se
- * anota como bean para ser <em>inyectable</em> en {@code SwitchManagementGenericAdapter}.
+ * anota como bean para ser <em>inyectable</em> en {@code SwitchManagementRestAdapter}.
  * Es una divergencia consciente respecto al libro, cuyo {@code SwitchManagementInputPort}
  * inyecta un {@code SwitchManagementOutputPort} que este núcleo no define.
  */

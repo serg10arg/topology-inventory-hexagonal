@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
  *
  * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: no inyecta nada (esta rama
  * no usa puerto de salida), pero se anota como bean para ser <em>inyectable</em> en
- * {@code NetworkManagementGenericAdapter}. Es una divergencia consciente respecto al libro,
+ * {@code NetworkManagementRestAdapter}. Es una divergencia consciente respecto al libro,
  * cuyo {@code NetworkManagementInputPort} inyecta un {@code RouterManagementOutputPort} que
  * este núcleo no consume aquí.
  */
