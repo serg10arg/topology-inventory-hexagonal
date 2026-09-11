@@ -12,7 +12,6 @@ import com.example.topologyinventory.framework.adapters.input.rest.request.Creat
 import com.example.topologyinventory.framework.adapters.input.rest.request.RemoveSwitchRequest;
 import com.example.topologyinventory.framework.adapters.input.rest.response.RouterResponse;
 import com.example.topologyinventory.framework.adapters.input.rest.response.SwitchResponse;
-import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -25,22 +24,13 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 /**
  * Adapter de entrada REST (<em>driving</em>) para la gestión de switches.
  *
- * <p><b>Divergencia respecto al libro / al camino de router.</b> En este núcleo un switch no
- * se persiste ni se recupera de forma independiente: solo existe como hijo del agregado de un
- * router (no hay {@code SwitchManagementH2Adapter}). Por eso:
- * <ul>
- *   <li>{@code create} opera <em>en memoria</em> y devuelve un switch efímero (no persistido);
- *       no toca la base, así que no necesita {@code @Blocking}.</li>
- *   <li>{@code add}/{@code remove} recuperan el edge router por su id (a través de
- *       {@link RouterManagementUseCase}), lo mutan <em>en memoria</em> y lo devuelven, sin
- *       persistir la conexión —igual que {@code /router/add} de la rebanada anterior—. Tocan
- *       la base al recuperar, así que van {@code @Blocking}. Persistir el agregado con hijos
- *       depende de la decisión pendiente del {@code @OneToMany} sin cascade.</li>
- * </ul>
- * Inyecta dos casos de uso: el de switches (crear/conectar/desconectar) y el de routers
- * (recuperar el edge destino). No contiene lógica de negocio: localizar un switch dentro del
- * edge recuperado es una búsqueda por id, consecuencia de que el switch no sea recuperable
- * por sí mismo.
+ * <p><b>Divergencia (sin cambios de fondo).</b> En este núcleo un switch solo existe como hijo de
+ * un router (no hay adapter de persistencia de switch). {@code create} opera en memoria;
+ * {@code add}/{@code remove} recuperan el edge router y lo mutan en memoria, sin persistir.
+ *
+ * <p><b>Reactivo (Fase 8).</b> {@code retrieveRouter} es ahora reactivo, así que {@code add}/
+ * {@code remove} <em>componen</em> sobre su {@link Uni} y ya no llevan {@code @Blocking}. El edge
+ * recuperado trae sus switches materializados por el output adapter ({@code session.fetch}).
  */
 @ApplicationScoped
 @Path("/switch")
@@ -62,16 +52,13 @@ public class SwitchManagementRestAdapter {
     @Path("/create")
     @Operation(operationId = "createSwitch", summary = "Crea un switch (en memoria)")
     public Uni<Response> createSwitch(CreateSwitchRequest request) {
-        return Uni.createFrom()
-                .item(() -> switchManagementUseCase.createSwitch(
-                        request.getVendor(),
-                        request.getModel(),
-                        IP.fromAddress(request.getIp()),
-                        request.getLocation().toDomain(),
-                        request.getSwitchType()))
-                .onItem().transform(networkSwitch ->
-                        Response.ok(SwitchResponse.from(networkSwitch)))
-                .onItem().transform(Response.ResponseBuilder::build);
+        var networkSwitch = switchManagementUseCase.createSwitch(
+                request.getVendor(),
+                request.getModel(),
+                IP.fromAddress(request.getIp()),
+                request.getLocation().toDomain(),
+                request.getSwitchType());
+        return Uni.createFrom().item(Response.ok(SwitchResponse.from(networkSwitch)).build());
     }
 
     /**
@@ -82,14 +69,11 @@ public class SwitchManagementRestAdapter {
     @POST
     @Path("/add")
     @Operation(operationId = "addSwitchToEdgeRouter", summary = "Crea un switch y lo conecta a un edge router")
-    @Blocking
     public Uni<Response> addSwitchToEdgeRouter(AddSwitchRequest request) {
-        return Uni.createFrom()
-                .item(() -> {
-                    Router router = routerManagementUseCase.retrieveRouter(
-                            Id.withId(request.getEdgeRouterId()));
+        return routerManagementUseCase.retrieveRouter(Id.withId(request.getEdgeRouterId()))
+                .onItem().transform(router -> {
                     if (!(router instanceof EdgeRouter edgeRouter)) {
-                        return null;
+                        return Response.status(Response.Status.NOT_FOUND).build();
                     }
                     Switch networkSwitch = switchManagementUseCase.createSwitch(
                             request.getVendor(),
@@ -97,12 +81,9 @@ public class SwitchManagementRestAdapter {
                             IP.fromAddress(request.getIp()),
                             request.getLocation().toDomain(),
                             request.getSwitchType());
-                    return switchManagementUseCase.addSwitchToEdgeRouter(networkSwitch, edgeRouter);
-                })
-                .onItem().transform(edge -> edge != null
-                        ? Response.ok(RouterResponse.from(edge))
-                        : Response.status(Response.Status.NOT_FOUND))
-                .onItem().transform(Response.ResponseBuilder::build);
+                    Router edge = switchManagementUseCase.addSwitchToEdgeRouter(networkSwitch, edgeRouter);
+                    return Response.ok(RouterResponse.from(edge)).build();
+                });
     }
 
     /**
@@ -113,25 +94,18 @@ public class SwitchManagementRestAdapter {
     @POST
     @Path("/remove")
     @Operation(operationId = "removeSwitchFromEdgeRouter", summary = "Desconecta un switch de un edge router")
-    @Blocking
     public Uni<Response> removeSwitchFromEdgeRouter(RemoveSwitchRequest request) {
-        return Uni.createFrom()
-                .item(() -> {
-                    Router router = routerManagementUseCase.retrieveRouter(
-                            Id.withId(request.getEdgeRouterId()));
+        return routerManagementUseCase.retrieveRouter(Id.withId(request.getEdgeRouterId()))
+                .onItem().transform(router -> {
                     if (!(router instanceof EdgeRouter edgeRouter)) {
-                        return null;
+                        return Response.status(Response.Status.NOT_FOUND).build();
                     }
-                    Switch networkSwitch = edgeRouter.getSwitches()
-                            .get(Id.withId(request.getSwitchId()));
+                    Switch networkSwitch = edgeRouter.getSwitches().get(Id.withId(request.getSwitchId()));
                     if (networkSwitch == null) {
-                        return null;
+                        return Response.status(Response.Status.NOT_FOUND).build();
                     }
-                    return switchManagementUseCase.removeSwitchFromEdgeRouter(networkSwitch, edgeRouter);
-                })
-                .onItem().transform(edge -> edge != null
-                        ? Response.ok(RouterResponse.from(edge))
-                        : Response.status(Response.Status.NOT_FOUND))
-                .onItem().transform(Response.ResponseBuilder::build);
+                    Router edge = switchManagementUseCase.removeSwitchFromEdgeRouter(networkSwitch, edgeRouter);
+                    return Response.ok(RouterResponse.from(edge)).build();
+                });
     }
 }

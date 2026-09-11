@@ -5,7 +5,6 @@ import lombok.*;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Espejo de persistencia del agregado {@code Router} del dominio.
@@ -16,14 +15,16 @@ import java.util.UUID;
  * estructura plana orientada a la base de datos que el {@code RouterH2Mapper}
  * traduce desde y hacia la entidad de dominio.
  *
- * <p>Persistencia gestionada por Hibernate ORM (Quarkus). El identificador se
- * mapea como {@code UUID} nativo de H2 ({@code columnDefinition = "uuid"}), sin
- * converter propietario. Los enums se mapean con {@link Enumerated} (no como
- * {@code @Embedded}), y las asociaciones {@link OneToMany} comparten la columna
- * FK escalar ya mapeada, en modo solo lectura ({@code insertable=false,
- * updatable=false}), de modo que Hibernate no genere ni tabla de join ni columnas
- * duplicadas. La persistencia es solo por la raíz del agregado (el router); las
- * colecciones no se cascan.
+ * <p>Persistencia gestionada por Hibernate Reactive (Quarkus). El identificador y la FK al core
+ * padre se declaran como {@link String} sobre columnas {@code VARCHAR(36)} (Fase 8): se retiró el
+ * {@code columnDefinition = "uuid"}, específico de H2, para poder correr sobre MySQL. El dominio
+ * sigue usando {@code UUID} dentro de su value object {@code Id}; la conversión a texto ocurre en
+ * el mapper, en la frontera. Los enums se mapean con {@link Enumerated} (no como {@code @Embedded}), y las
+ * asociaciones {@link OneToMany} comparten la FK escalar ya mapeada, en solo lectura
+ * ({@code insertable=false, updatable=false}), de modo que Hibernate no genere ni tabla de
+ * join ni columnas duplicadas. Bajo Hibernate Reactive esas colecciones se navegan de forma
+ * explícita ({@code session.fetch}), nunca perezosamente en el hilo del mapper. La
+ * persistencia es solo por la raíz; las colecciones aún no se cascan (deuda que salda SC2).
  */
 @Builder
 @Getter
@@ -34,11 +35,11 @@ import java.util.UUID;
 public class RouterData implements Serializable {
 
     @Id
-    @Column(name = "router_id", columnDefinition = "uuid", updatable = false)
-    private UUID routerId;
+    @Column(name = "router_id", length = 36, updatable = false)
+    private String routerId;
 
-    @Column(name = "router_parent_core_id")
-    private UUID routerParentCoreId;
+    @Column(name = "router_parent_core_id", length = 36)
+    private String routerParentCoreId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "router_vendor")

@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Espejo de persistencia de la entidad {@code Switch} del dominio.
@@ -18,9 +17,11 @@ import java.util.UUID;
  * ocurre siempre a través de la raíz del agregado (el router), nunca de forma
  * independiente.
  *
- * <p>Persistencia gestionada por Hibernate ORM. UUID nativo (sin converter),
- * enums con {@link Enumerated}, y la colección {@link OneToMany} de redes en solo
- * lectura sobre la columna {@code networks.switch_id}.
+ * <p>Persistencia gestionada por Hibernate Reactive. El id y la FK al router se declaran como
+ * {@link String} sobre columnas {@code VARCHAR(36)} (Fase 8; se retiró el
+ * {@code columnDefinition = "uuid"} de H2), los enums con {@link Enumerated}, y la colección
+ * {@link OneToMany} de redes va en solo lectura sobre {@code networks.switch_id} y se navega
+ * con {@code session.fetch}.
  */
 @Builder
 @Getter
@@ -31,11 +32,11 @@ import java.util.UUID;
 public class SwitchData implements Serializable {
 
     @Id
-    @Column(name = "switch_id", columnDefinition = "uuid", updatable = false)
-    private UUID switchId;
+    @Column(name = "switch_id", length = 36, updatable = false)
+    private String switchId;
 
-    @Column(name = "router_id")
-    private UUID routerId;
+    @Column(name = "router_id", length = 36)
+    private String routerId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "switch_vendor")

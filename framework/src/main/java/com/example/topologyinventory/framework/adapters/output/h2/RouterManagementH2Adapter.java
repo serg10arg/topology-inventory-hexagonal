@@ -4,70 +4,97 @@ import com.example.topologyinventory.application.ports.output.RouterManagementOu
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.vo.Id;
 import com.example.topologyinventory.framework.adapters.output.h2.data.RouterData;
+import com.example.topologyinventory.framework.adapters.output.h2.data.RouterTypeData;
+import com.example.topologyinventory.framework.adapters.output.h2.data.SwitchData;
 import com.example.topologyinventory.framework.adapters.output.h2.mappers.RouterH2Mapper;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
-import jakarta.transaction.Transactional;
+import org.hibernate.reactive.mutiny.Mutiny;
+
+import java.util.List;
 
 /**
- * Output adapter que implementa {@link RouterManagementOutputPort} usando JPA
- * (Hibernate ORM) sobre H2, con la persistencia <em>gestionada por Quarkus</em>.
+ * Output adapter que implementa {@link RouterManagementOutputPort} con <b>Hibernate Reactive
+ * puro</b> (sin Panache, decisión D1) sobre MySQL. Encapsula la tecnología de persistencia y
+ * traduce a/desde el dominio con {@link RouterH2Mapper}, de modo que el núcleo nunca ve tipos de
+ * base de datos.
  *
- * Es la implementación concreta del puerto de salida del router: aquí la
- * tecnología de persistencia queda encapsulada. Traduce a/desde el modelo de
- * dominio mediante {@link RouterH2Mapper}, de modo que el núcleo nunca ve tipos
- * de base de datos.
- *
- * <p><b>Cableado (CDI).</b> Este adapter es un bean {@code @ApplicationScoped}: lo
- * descubre Arc por el índice Jandex y lo inyecta donde se declare
- * {@link RouterManagementOutputPort} (en {@code RouterManagementInputPort}). Al
- * ser bean:
+ * <p><b>Cableado (CDI).</b> Bean {@code @ApplicationScoped} descubierto por Jandex e inyectado
+ * donde {@code RouterManagementInputPort} declara {@link RouterManagementOutputPort}. Al pasar a
+ * reactivo, dos pilares de la era bloqueante cambian:
  * <ul>
- *   <li>recibe el {@link EntityManager} gestionado por {@code @Inject}, en lugar de
- *       seleccionarlo del contenedor con {@code CDI.current()};</li>
- *   <li>delega la demarcación de la transacción en {@code @Transactional}, en lugar
- *       de abrir y confirmar una {@code UserTransaction} a mano.</li>
+ *   <li>{@code @Inject EntityManager} → {@code @Inject Mutiny.SessionFactory}: se abre una sesión
+ *       reactiva por operación con {@code withSession}/{@code withTransaction}.</li>
+ *   <li>{@code @Transactional} → {@code withTransaction(...)}: la transacción se demarca
+ *       programáticamente dentro del lambda; desaparece la JTA bloqueante (Narayana).</li>
  * </ul>
- * El {@code EntityManager} inyectado es <em>transaction-scoped</em>: su contexto de
- * persistencia se liga a la transacción que abre {@code @Transactional}, de modo que
- * el mapper puede navegar las colecciones {@code @OneToMany} (perezosas) al recuperar
- * sin lanzar {@code LazyInitializationException}.
  *
- * <p><b>Desviación respecto al libro (cap. 11).</b> El libro deja el
- * {@code EntityManager} con {@code @PersistenceContext} y difiere su inyección al
- * cap. 13; aquí se adelanta a {@code @Inject} porque este núcleo ya no arrastra el
- * {@code Persistence.createEntityManagerFactory} que el libro conserva.
+ * <p><b>Materialización profunda del agregado (lectura).</b> Bajo Hibernate Reactive las
+ * colecciones {@code @OneToMany} no se navegan de forma síncrona: hay que iniciarlas con
+ * {@code session.fetch}. Por eso {@code retrieveRouter} no es un {@code find} plano, sino un
+ * {@code find} seguido de fetch dependiente del tipo: un CORE materializa sus routers hijos (los
+ * ids bastan para la respuesta superficial); un EDGE materializa sus switches y, por cada uno,
+ * sus redes (dos niveles), porque el {@code SwitchResponse} serializa las redes completas.
+ *
+ * <p><b>Escritura sin cascade (SC1).</b> {@code persistRouter} inserta solo la fila raíz: las
+ * colecciones {@code @OneToMany} son de solo lectura, así que Hibernate no escribe hijos.
+ * Persistir el agregado con hijos (cascade) es la deuda que salda SC2.
  */
 @ApplicationScoped
 public class RouterManagementH2Adapter implements RouterManagementOutputPort {
 
-    /**
-     * {@link EntityManager} gestionado por Quarkus, inyectado por el contenedor. Su
-     * contexto de persistencia queda ligado a la transacción activa que demarca
-     * {@link Transactional}.
-     */
+    /** Factoría de sesiones reactivas de Hibernate Reactive, inyectada por Quarkus. */
     @Inject
-    EntityManager entityManager;
+    Mutiny.SessionFactory sessionFactory;
 
     @Override
-    @Transactional
-    public Router retrieveRouter(Id id) {
-        // La lectura y el mapeo van dentro de la transacción que abre @Transactional:
-        // el mapper navega las colecciones @OneToMany (perezosas), que fuera de una
-        // sesión activa lanzarían LazyInitializationException. find (no getReference)
-        // carga la entidad de inmediato.
-        var routerData = entityManager.find(RouterData.class, id.getId());
-        return RouterH2Mapper.routerDataToDomain(routerData);
+    public Uni<Router> retrieveRouter(Id id) {
+        return sessionFactory.withSession(session ->
+                session.find(RouterData.class, id.getId().toString())
+                        .flatMap(routerData -> {
+                            if (routerData == null) {
+                                return Uni.createFrom().nullItem();
+                            }
+                            if (routerData.getRouterType() == RouterTypeData.CORE) {
+                                // CORE: basta materializar los routers hijos (la respuesta expone ids).
+                                return session.fetch(routerData.getRouters())
+                                        .map(children ->
+                                                RouterH2Mapper.coreWithChildren(routerData, children));
+                            }
+                            // EDGE: materializar switches y, por cada uno, sus redes (dos niveles).
+                            return session.fetch(routerData.getSwitches())
+                                    .flatMap(switches -> fetchNetworks(session, switches))
+                                    .map(switches ->
+                                            RouterH2Mapper.edgeWithSwitches(routerData, switches));
+                        }));
     }
 
     @Override
-    @Transactional
-    public Router persistRouter(Router router) {
-        // El mapeo dominio -> data es en memoria; queda dentro de la transacción, que
-        // @Transactional confirma al salir del método (rollback si algo lanza).
+    public Uni<Router> persistRouter(Router router) {
         var routerData = RouterH2Mapper.routerDomainToData(router);
-        entityManager.persist(routerData);
-        return router;
+        return sessionFactory.withTransaction((session, tx) -> session.persist(routerData))
+                .replaceWith(router);
+    }
+
+    /**
+     * Inicia de forma reactiva la colección de redes de cada switch, devolviendo la lista de
+     * switches ya con sus redes materializadas, lista para el mapper.
+     *
+     * <p><b>Concurrencia 1, a propósito.</b> Se arma una {@code Uni} por switch y se agrupan con
+     * {@code Uni.join()}, pero con {@code usingConcurrencyOf(1)}: una sesión de Hibernate Reactive
+     * <em>no admite operaciones simultáneas</em>. Abanicar los fetch en paralelo sobre la misma
+     * sesión rompe su máquina de estados y lanza
+     * {@code IllegalStateException: Illegal pop() with non-matching JdbcValuesSourceProcessingState}.
+     * Serializándolos, cada fetch espera al anterior y la sesión atiende de uno en uno.
+     */
+    private Uni<List<SwitchData>> fetchNetworks(Mutiny.Session session, List<SwitchData> switches) {
+        if (switches == null || switches.isEmpty()) {
+            return Uni.createFrom().item(switches);
+        }
+        List<Uni<SwitchData>> perSwitch = switches.stream()
+                .map(switchData -> session.fetch(switchData.getNetworks()).replaceWith(switchData))
+                .toList();
+        return Uni.join().all(perSwitch).usingConcurrencyOf(1).andCollectFailures();
     }
 }

@@ -10,43 +10,95 @@ import com.example.topologyinventory.framework.adapters.output.h2.data.*;
 import java.util.*;
 
 /**
- * Traductor entre el modelo de dominio y el modelo de persistencia (las clases
- * {@code *Data}). Es el "peaje" de la frontera: nada del mundo de la base de
- * datos entra al núcleo sin pasar por aquí, y ninguna entidad de dominio se
- * persiste sin convertirse antes en su espejo {@code *Data}.
+ * Traductor entre el modelo de dominio y el modelo de persistencia (las clases {@code *Data}).
+ * Es el "peaje" de la frontera: nada del mundo de la base entra al núcleo sin pasar por aquí.
  *
- * Reconstruye los routers con sus builders ({@code CoreRouter}/{@code EdgeRouter}),
- * respetando que las entidades del dominio son inmutables (sin setters). Como el
- * {@code Switch} del dominio no guarda el id de su router, al persistir se le
- * pasa el id del edge router padre (la raíz del agregado).
+ * <p><b>Reconstrucción por profundidad (Fase 8).</b> Bajo Hibernate Reactive las colecciones
+ * lazy se inician en el adapter con {@code session.fetch}; este mapper es puramente en memoria y
+ * reconstruye a la profundidad que el adapter ya materializó:
+ * <ul>
+ *   <li>{@link #routerRootToDomain} — solo escalares, sin hijos (no navega ninguna colección);</li>
+ *   <li>{@link #coreWithChildren} — un CORE con sus routers hijos ya fetchados, cada hijo
+ *       superficial (basta su id para la respuesta);</li>
+ *   <li>{@link #edgeWithSwitches} — un EDGE con sus switches ya fetchados, cada uno con sus redes
+ *       ya fetchadas.</li>
+ * </ul>
+ * La dirección dominio → data ({@link #routerDomainToData}) es en memoria y no cambia.
  */
 public class RouterH2Mapper {
 
-    public static Router routerDataToDomain(RouterData routerData) {
-        var id = Id.withId(routerData.getRouterId().toString());
+    // ---------------------------------------------------------------------
+    // data -> domain (reconstrucción por profundidad)
+    // ---------------------------------------------------------------------
+
+    /** Reconstruye la raíz con solo sus escalares, sin hijos. No toca colecciones lazy. */
+    public static Router routerRootToDomain(RouterData routerData) {
+        var id = Id.withId(routerData.getRouterId());
         var vendor = Vendor.valueOf(routerData.getRouterVendor().toString());
         var model = Model.valueOf(routerData.getRouterModel().toString());
         var ip = IP.fromAddress(routerData.getIp().getAddress());
         var location = locationDataToLocation(routerData.getRouterLocation());
         var routerType = RouterType.valueOf(routerData.getRouterType().name());
 
-        if (routerData.getRouterType().equals(RouterTypeData.CORE)) {
+        if (routerData.getRouterType() == RouterTypeData.CORE) {
             return CoreRouter.builder()
                     .id(id).vendor(vendor).model(model).ip(ip).location(location)
                     .routerType(routerType)
-                    .routers(getRoutersFromData(routerData.getRouters()))
+                    .routers(new HashMap<>())
                     .build();
         }
         return EdgeRouter.builder()
                 .id(id).vendor(vendor).model(model).ip(ip).location(location)
                 .routerType(routerType)
-                .switches(getSwitchesFromData(routerData.getSwitches()))
+                .switches(new HashMap<>())
                 .build();
     }
 
+    /** Reconstruye un CORE con sus routers hijos (ya fetchados), cada hijo en forma superficial. */
+    public static Router coreWithChildren(RouterData coreData, List<RouterData> fetchedChildren) {
+        var core = (CoreRouter) routerRootToDomain(coreData);
+        if (fetchedChildren != null) {
+            for (RouterData child : fetchedChildren) {
+                core.getRouters().put(
+                        Id.withId(child.getRouterId()),
+                        routerRootToDomain(child));
+            }
+        }
+        return core;
+    }
+
+    /** Reconstruye un EDGE con sus switches (ya fetchados, con sus redes ya fetchadas). */
+    public static Router edgeWithSwitches(RouterData edgeData, List<SwitchData> fetchedSwitches) {
+        var edge = (EdgeRouter) routerRootToDomain(edgeData);
+        if (fetchedSwitches != null) {
+            for (SwitchData switchData : fetchedSwitches) {
+                edge.getSwitches().put(
+                        Id.withId(switchData.getSwitchId()),
+                        switchDataToDomain(switchData));
+            }
+        }
+        return edge;
+    }
+
+    private static Switch switchDataToDomain(SwitchData switchData) {
+        return Switch.builder()
+                .id(Id.withId(switchData.getSwitchId()))
+                .vendor(Vendor.valueOf(switchData.getSwitchVendor().toString()))
+                .model(Model.valueOf(switchData.getSwitchModel().toString()))
+                .ip(IP.fromAddress(switchData.getIp().getAddress()))
+                .location(locationDataToLocation(switchData.getSwitchLocation()))
+                .switchType(SwitchType.valueOf(switchData.getSwitchType().toString()))
+                .switchNetworks(getNetworksFromData(switchData.getNetworks()))
+                .build();
+    }
+
+    // ---------------------------------------------------------------------
+    // domain -> data (en memoria, sin cambios)
+    // ---------------------------------------------------------------------
+
     public static RouterData routerDomainToData(Router router) {
         var routerData = RouterData.builder()
-                .routerId(router.getId().getId())
+                .routerId(router.getId().getId().toString())
                 .routerVendor(VendorData.valueOf(router.getVendor().toString()))
                 .routerModel(ModelData.valueOf(router.getModel().toString()))
                 .ip(IPData.fromAddress(router.getIp().getIpAddress()))
@@ -60,35 +112,27 @@ public class RouterH2Mapper {
         } else {
             var edgeRouter = (EdgeRouter) router;
             routerData.setSwitches(
-                    getSwitchesFromDomain(edgeRouter.getSwitches(), router.getId().getId()));
+                    getSwitchesFromDomain(edgeRouter.getSwitches(), router.getId().getId().toString()));
         }
         return routerData;
     }
 
-    private static Switch switchDataToDomain(SwitchData switchData) {
-        return Switch.builder()
-                .id(Id.withId(switchData.getSwitchId().toString()))
-                .vendor(Vendor.valueOf(switchData.getSwitchVendor().toString()))
-                .model(Model.valueOf(switchData.getSwitchModel().toString()))
-                .ip(IP.fromAddress(switchData.getIp().getAddress()))
-                .location(locationDataToLocation(switchData.getSwitchLocation()))
-                .switchType(SwitchType.valueOf(switchData.getSwitchType().toString()))
-                .switchNetworks(getNetworksFromData(switchData.getNetworks()))
-                .build();
-    }
-
-    private static SwitchData switchDomainToData(Switch aSwitch, UUID routerId) {
+    private static SwitchData switchDomainToData(Switch aSwitch, String routerId) {
         return SwitchData.builder()
-                .switchId(aSwitch.getId().getId())
+                .switchId(aSwitch.getId().getId().toString())
                 .routerId(routerId)
                 .switchVendor(VendorData.valueOf(aSwitch.getVendor().toString()))
                 .switchModel(ModelData.valueOf(aSwitch.getModel().toString()))
                 .ip(IPData.fromAddress(aSwitch.getIp().getIpAddress()))
                 .switchLocation(locationDomainToLocationData(aSwitch.getLocation()))
                 .switchType(SwitchTypeData.valueOf(aSwitch.getSwitchType().toString()))
-                .networks(getNetworksFromDomain(aSwitch.getSwitchNetworks(), aSwitch.getId().getId()))
+                .networks(getNetworksFromDomain(aSwitch.getSwitchNetworks(), aSwitch.getId().getId().toString()))
                 .build();
     }
+
+    // ---------------------------------------------------------------------
+    // helpers de value objects (sin cambios)
+    // ---------------------------------------------------------------------
 
     public static Location locationDataToLocation(LocationData locationData) {
         return Location.builder()
@@ -114,18 +158,6 @@ public class RouterH2Mapper {
                 .build();
     }
 
-    private static Map<Id, Router> getRoutersFromData(List<RouterData> routerDataList) {
-        Map<Id, Router> routerMap = new HashMap<>();
-        if (routerDataList != null) {
-            for (RouterData routerData : routerDataList) {
-                routerMap.put(
-                        Id.withId(routerData.getRouterId().toString()),
-                        routerDataToDomain(routerData));
-            }
-        }
-        return routerMap;
-    }
-
     private static List<RouterData> getRoutersFromDomain(Map<Id, Router> routers) {
         List<RouterData> routerDataList = new ArrayList<>();
         if (routers != null) {
@@ -134,19 +166,7 @@ public class RouterH2Mapper {
         return routerDataList;
     }
 
-    private static Map<Id, Switch> getSwitchesFromData(List<SwitchData> switchDataList) {
-        Map<Id, Switch> switchMap = new HashMap<>();
-        if (switchDataList != null) {
-            for (SwitchData switchData : switchDataList) {
-                switchMap.put(
-                        Id.withId(switchData.getSwitchId().toString()),
-                        switchDataToDomain(switchData));
-            }
-        }
-        return switchMap;
-    }
-
-    private static List<SwitchData> getSwitchesFromDomain(Map<Id, Switch> switches, UUID routerId) {
+    private static List<SwitchData> getSwitchesFromDomain(Map<Id, Switch> switches, String routerId) {
         List<SwitchData> switchDataList = new ArrayList<>();
         if (switches != null) {
             switches.values().forEach(aSwitch -> switchDataList.add(switchDomainToData(aSwitch, routerId)));
@@ -165,7 +185,7 @@ public class RouterH2Mapper {
         return networks;
     }
 
-    private static List<NetworkData> getNetworksFromDomain(List<Network> networks, UUID switchId) {
+    private static List<NetworkData> getNetworksFromDomain(List<Network> networks, String switchId) {
         List<NetworkData> networkDataList = new ArrayList<>();
         if (networks != null) {
             networks.forEach(network -> networkDataList.add(new NetworkData(

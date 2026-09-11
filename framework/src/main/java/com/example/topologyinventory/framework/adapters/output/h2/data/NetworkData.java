@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.util.UUID;
 
 /**
  * Espejo de persistencia del value object {@code Network} del dominio.
@@ -28,8 +27,8 @@ public class NetworkData implements Serializable {
     @Column(name = "network_id")
     private int id;
 
-    @Column(name = "switch_id")
-    private UUID switchId;
+    @Column(name = "switch_id", length = 36)
+    private String switchId;
 
     @Embedded
     @AttributeOverrides({
@@ -50,7 +49,7 @@ public class NetworkData implements Serializable {
      * Constructor de conveniencia usado por el mapper al reconstruir las redes
      * de un switch (el {@code network_id} lo genera la base de datos).
      */
-    public NetworkData(UUID switchId, IPData ip, String name, Integer cidr) {
+    public NetworkData(String switchId, IPData ip, String name, Integer cidr) {
         this.switchId = switchId;
         this.ip = ip;
         this.name = name;

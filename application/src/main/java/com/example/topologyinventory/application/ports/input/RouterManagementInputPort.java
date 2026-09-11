@@ -6,35 +6,29 @@ import com.example.topologyinventory.domain.entity.CoreRouter;
 import com.example.topologyinventory.domain.entity.Router;
 import com.example.topologyinventory.domain.entity.factory.RouterFactory;
 import com.example.topologyinventory.domain.vo.*;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.NoArgsConstructor;
 
 /**
  * Application service que implementa {@link RouterManagementUseCase}. Su papel es
- * <em>orquestar</em>: delega la creación en {@link RouterFactory}, las conexiones en
- * el agregado {@link CoreRouter} y la persistencia en el puerto de salida. No contiene
- * reglas de negocio.
+ * <em>orquestar</em>: delega la creación en {@link RouterFactory}, las conexiones en el agregado
+ * {@link CoreRouter} y la persistencia en el puerto de salida. No contiene reglas de negocio.
  *
- * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: Arc lo comparte como
- * única instancia y lo crea de forma perezosa (en la primera llamada). El puerto de
- * salida llega por {@code @Inject}, no por {@code ServiceLoader}: Arc localiza el bean
- * que implementa {@link RouterManagementOutputPort} (el output adapter de H2) sin que
- * este hexágono conozca la clase concreta. Como esa dependencia es a su vez
- * {@code @ApplicationScoped}, lo que se recibe es un <em>client proxy</em>; la instancia
- * real —y con ella el arranque de la persistencia— no se materializa hasta la primera
- * operación de persistir o recuperar. Así se conserva, sin código propio, la laziness
- * que antes daba la resolución perezosa por {@code ServiceLoader}.
+ * <p><b>Cableado (CDI).</b> Es un bean {@code @ApplicationScoped}: Arc lo comparte como única
+ * instancia. El puerto de salida llega por {@code @Inject} (Arc localiza el output adapter que
+ * implementa {@link RouterManagementOutputPort} sin que este hexágono conozca la clase concreta).
+ *
+ * <p><b>Reactivo (Fase 8).</b> {@code retrieveRouter}/{@code persistRouter} ya no devuelven un
+ * {@link Router} directo, sino la {@link Uni} del puerto de salida: la orquestación es aquí un
+ * <em>passthrough</em> reactivo, sin bloquear. Las operaciones en memoria se delegan tal cual.
  */
 @NoArgsConstructor
 @ApplicationScoped
 public class RouterManagementInputPort implements RouterManagementUseCase {
 
-    /**
-     * Puerto de salida hacia la persistencia, provisto por el contenedor. Arc inyecta
-     * el bean que implementa {@link RouterManagementOutputPort}; su naturaleza de client
-     * proxy difiere el coste real (la conexión con H2) a la primera llamada.
-     */
+    /** Puerto de salida hacia la persistencia reactiva, provisto por el contenedor. */
     @Inject
     RouterManagementOutputPort routerManagementOutputPort;
 
@@ -44,25 +38,25 @@ public class RouterManagementInputPort implements RouterManagementUseCase {
         return RouterFactory.getRouter(null, vendor, model, ip, location, routerType);
     }
 
-    /** {@inheritDoc} Delega en el puerto de salida inyectado. */
+    /** {@inheritDoc} Devuelve la {@link Uni} del puerto de salida sin bloquear. */
     @Override
-    public Router retrieveRouter(Id id) {
+    public Uni<Router> retrieveRouter(Id id) {
         return routerManagementOutputPort.retrieveRouter(id);
     }
 
-    /** {@inheritDoc} Delega en el puerto de salida inyectado. */
+    /** {@inheritDoc} Devuelve la {@link Uni} del puerto de salida sin bloquear. */
     @Override
-    public Router persistRouter(Router router) {
+    public Uni<Router> persistRouter(Router router) {
         return routerManagementOutputPort.persistRouter(router);
     }
 
-    /** {@inheritDoc} La validación de la conexión ocurre dentro del agregado. */
+    /** {@inheritDoc} La validación de la conexión ocurre dentro del agregado (en memoria). */
     @Override
     public CoreRouter addRouterToCoreRouter(Router router, CoreRouter coreRouter) {
         return coreRouter.addRouter(router);
     }
 
-    /** {@inheritDoc} La validación de la desconexión ocurre dentro del agregado. */
+    /** {@inheritDoc} La validación de la desconexión ocurre dentro del agregado (en memoria). */
     @Override
     public Router removeRouterFromCoreRouter(Router router, CoreRouter coreRouter) {
         return coreRouter.removeRouter(router);

@@ -34,6 +34,18 @@
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
         </dependency>
 
+        <!--
+         ~ Mutiny (Fase 8): el puerto de salida del router y las firmas retrieve/persist del caso
+         ~ de uso exponen 'Uni', asi que este hexagono necesita el tipo en compilacion. Sin
+         ~ <version>: la gobierna el quarkus-bom importado en el POM raiz. Casa con
+         ~ 'requires io.smallrye.mutiny' del module-info. Es la unica dependencia reactiva de
+         ~ 'application', y no arrastra ningun modulo de Quarkus.
+         -->
+        <dependency>
+            <groupId>io.smallrye.reactive</groupId>
+            <artifactId>mutiny</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.cucumber</groupId>
             <artifactId>cucumber-java</artifactId>
