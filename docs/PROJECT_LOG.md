@@ -183,15 +183,15 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
       también fuera de dev/test.
 - **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
 
-    | # | Decisión | Motivo | Evidencia |
-    |---|----------|--------|-----------|
-    | 1 | `quarkus-bom` (no `quarkus-universe-bom`); `io.smallrye` jandex; `fast-jar` por defecto | El universe BOM y el jandex de JBoss se discontinuaron en Quarkus 3.x | `mvn package` verde; feature `[cdi]` |
-    | 2 | Swap de proveedor adelantado a esta fase: EclipseLink → Hibernate ORM gestionado por Quarkus | Objetivo de la fase: `persistence.xml` → `application.properties` | features `[hibernate-orm, jdbc-h2, agroal]` |
-    | 3 | DDL propiedad de Hibernate (`drop-and-create`) + `import.sql`, retirando `schema.sql` a mano | Dueño único del esquema, idiomático en Quarkus | `create table routers/switches/networks` en el log de arranque |
-    | 4 | UUID nativo, enums con `@Enumerated`, `@OneToMany` read-only sobre FK escalar | Hibernate rechaza combinaciones que EclipseLink toleraba | Augmentation sin errores de metamodelo; 3 FK y ninguna tabla de join |
-    | 5 | EntityManager por SPI estándar `CDI.current()` + `UserTransaction`, no `@Inject`/`@Transactional` | Adapter no-bean; hexágono sin `requires quarkus.*` | `framework` no requiere Quarkus; round-trip verde |
-    | 6 | `ServiceLoader` portado a `META-INF/services` (+ constructor público, adapter stateless) | Quarkus resuelve por classpath, donde `module-info provides` no aplica | El mismo binding lo usan `@QuarkusTest` y el fast-jar |
-    | 7 | `framework`: `junit 6.0.3` y surefire `useModulePath=false` | `quarkus-junit5 3.33` corre sobre JUnit 6; surefire modular duplicaba el proveedor cruzando classloaders | Los 5 tests del framework en verde; Cucumber (JUnit 5) intacto |
+  | # | Decisión | Motivo | Evidencia |
+      |---|----------|--------|-----------|
+  | 1 | `quarkus-bom` (no `quarkus-universe-bom`); `io.smallrye` jandex; `fast-jar` por defecto | El universe BOM y el jandex de JBoss se discontinuaron en Quarkus 3.x | `mvn package` verde; feature `[cdi]` |
+  | 2 | Swap de proveedor adelantado a esta fase: EclipseLink → Hibernate ORM gestionado por Quarkus | Objetivo de la fase: `persistence.xml` → `application.properties` | features `[hibernate-orm, jdbc-h2, agroal]` |
+  | 3 | DDL propiedad de Hibernate (`drop-and-create`) + `import.sql`, retirando `schema.sql` a mano | Dueño único del esquema, idiomático en Quarkus | `create table routers/switches/networks` en el log de arranque |
+  | 4 | UUID nativo, enums con `@Enumerated`, `@OneToMany` read-only sobre FK escalar | Hibernate rechaza combinaciones que EclipseLink toleraba | Augmentation sin errores de metamodelo; 3 FK y ninguna tabla de join |
+  | 5 | EntityManager por SPI estándar `CDI.current()` + `UserTransaction`, no `@Inject`/`@Transactional` | Adapter no-bean; hexágono sin `requires quarkus.*` | `framework` no requiere Quarkus; round-trip verde |
+  | 6 | `ServiceLoader` portado a `META-INF/services` (+ constructor público, adapter stateless) | Quarkus resuelve por classpath, donde `module-info provides` no aplica | El mismo binding lo usan `@QuarkusTest` y el fast-jar |
+  | 7 | `framework`: `junit 6.0.3` y surefire `useModulePath=false` | `quarkus-junit5 3.33` corre sobre JUnit 6; surefire modular duplicaba el proveedor cruzando classloaders | Los 5 tests del framework en verde; Cucumber (JUnit 5) intacto |
 
 - **Verificación:** `mvn clean package` en verde en todo el reactor — `domain` 19,
   `application` 12 (Cucumber), `framework` 5 (`@QuarkusTest`, 0 skipped) —; el
@@ -265,15 +265,15 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
       es la frontera correcta (la persistencia se prueba en `framework`, con Quarkus).
 - **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
 
-    | # | Decisión | Motivo | Evidencia |
-    |---|----------|--------|-----------|
-    | 1 | `@Inject EntityManager` + `@Transactional` **adelantados** del cap. de persistencia reactiva a esta fase (la referencia mantiene `@PersistenceContext`) | Este núcleo ya no arrastra el `Persistence.createEntityManagerFactory` de la referencia; el bean gestionado es más limpio | Dos `select` en el arranque (`router_id=?` y `router_parent_core_id=?`): navegación lazy cubierta por la transacción |
-    | 2 | DI provista por `quarkus-arc`, no por `quarkus-resteasy` | REST llega en la fase siguiente; Arc ya da la DI sin arrastrar el stack web | Feature `[cdi]` presente sin `resteasy`; reactor verde |
-    | 3 | Input ports de switch/red son beans **sin** `@Inject` (la referencia les inyecta un output port) | Este núcleo no define `SwitchManagementOutputPort`: la persistencia va por el agregado router | `createAndConnectHierarchy` verde inyectando ambos casos de uso; sin `UnsatisfiedResolutionException` |
-    | 4 | Los generic adapters inyectan **un** caso de uso, no dos | Tu diseño divergente: cada generic adapter delega en un único use case | `git diff` de SC2; contenedor arranca y resuelve sin ambigüedad |
-    | 5 | Tests de `application` en Cucumber plano (no `@QuarkusTest` + `@Mock`) | No ejercitan el output port; convertirlos reintroduciría el conflicto JUnit 5↔6 | `application` 12 verde; `framework` en JUnit 6 intacto |
-    | 6 | `ServiceLoader` retirado por completo (`provides`/`uses` + `META-INF/services`) en favor de la resolución de beans | Dos caminos de resolución sobran; dejar `META-INF/services` cargaría una copia no gestionada del adapter (con `EntityManager` en `null`) | `git rm` del fichero de servicios; `module-info` sin `provides`/`uses`; resolución CDI sin ambigüedad |
-    | 7 | SC3 (`opens` para proxies de Arc) **colapsa**: cero directivas JPMS extra | El runtime es classpath plano; Arc descubre por Jandex, no por module path | `git diff` de SC2 sin tocar ningún `module-info`; ni el reactor ni los `@QuarkusTest` lanzaron error de proxy |
+  | # | Decisión | Motivo | Evidencia |
+      |---|----------|--------|-----------|
+  | 1 | `@Inject EntityManager` + `@Transactional` **adelantados** del cap. de persistencia reactiva a esta fase (la referencia mantiene `@PersistenceContext`) | Este núcleo ya no arrastra el `Persistence.createEntityManagerFactory` de la referencia; el bean gestionado es más limpio | Dos `select` en el arranque (`router_id=?` y `router_parent_core_id=?`): navegación lazy cubierta por la transacción |
+  | 2 | DI provista por `quarkus-arc`, no por `quarkus-resteasy` | REST llega en la fase siguiente; Arc ya da la DI sin arrastrar el stack web | Feature `[cdi]` presente sin `resteasy`; reactor verde |
+  | 3 | Input ports de switch/red son beans **sin** `@Inject` (la referencia les inyecta un output port) | Este núcleo no define `SwitchManagementOutputPort`: la persistencia va por el agregado router | `createAndConnectHierarchy` verde inyectando ambos casos de uso; sin `UnsatisfiedResolutionException` |
+  | 4 | Los generic adapters inyectan **un** caso de uso, no dos | Tu diseño divergente: cada generic adapter delega en un único use case | `git diff` de SC2; contenedor arranca y resuelve sin ambigüedad |
+  | 5 | Tests de `application` en Cucumber plano (no `@QuarkusTest` + `@Mock`) | No ejercitan el output port; convertirlos reintroduciría el conflicto JUnit 5↔6 | `application` 12 verde; `framework` en JUnit 6 intacto |
+  | 6 | `ServiceLoader` retirado por completo (`provides`/`uses` + `META-INF/services`) en favor de la resolución de beans | Dos caminos de resolución sobran; dejar `META-INF/services` cargaría una copia no gestionada del adapter (con `EntityManager` en `null`) | `git rm` del fichero de servicios; `module-info` sin `provides`/`uses`; resolución CDI sin ambigüedad |
+  | 7 | SC3 (`opens` para proxies de Arc) **colapsa**: cero directivas JPMS extra | El runtime es classpath plano; Arc descubre por Jandex, no por module path | `git diff` de SC2 sin tocar ningún `module-info`; ni el reactor ni los `@QuarkusTest` lanzaron error de proxy |
 
 - **Verificación:** `mvn clean install` en verde en todo el reactor — `domain` 19,
   `application` 12 (Cucumber), `framework` 5 (`@QuarkusTest`, 0 skipped) —; el
@@ -296,10 +296,10 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
       `RouterManagementRestAdapter` (`@Path("/router")`, bean `@ApplicationScoped`)
       expone el caso de uso de router como endpoints `Uni<Response>` con `@Blocking`.
       DTOs de frontera: `CreateRouterRequest`/`AddRouterRequest`/`RemoveRouterRequest`
-      + `LocationRequest` (entrada), `RouterResponse`/`LocationResponse` (salida,
-      superficial: hijos como ids). Costura JPMS en `framework`:
-      `+requires jakarta.ws.rs, io.smallrye.mutiny, io.smallrye.common.annotation`.
-      Deps: `quarkus-rest`, `quarkus-rest-jackson`, `rest-assured` (test).
+        + `LocationRequest` (entrada), `RouterResponse`/`LocationResponse` (salida,
+          superficial: hijos como ids). Costura JPMS en `framework`:
+          `+requires jakarta.ws.rs, io.smallrye.mutiny, io.smallrye.common.annotation`.
+          Deps: `quarkus-rest`, `quarkus-rest-jackson`, `rest-assured` (test).
     - **SC2 — Adapters REST de switch y red:** `SwitchManagementRestAdapter` y
       `NetworkManagementRestAdapter` con el mismo patrón; los `create` operan en
       memoria (este núcleo no persiste switch/red), y `add`/`remove` recuperan el
@@ -342,17 +342,17 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
       memoria, corren sin `@Blocking`.
 - **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
 
-    | # | Decisión | Motivo | Evidencia |
-    |---|----------|--------|-----------|
-    | 1 | La capa `generic` se **promueve** a `rest` (la referencia la reemplaza en el cap. 12); aquí en dos mitades: añadir `rest` (SC1–2), retirar `generic` (SC4) | El REST adapter y el generic hacían el mismo trabajo; mantener ambos sería *passthrough* sin valor | 14 verdes tras el borrado; los caminos e2e quedan cubiertos por los tests REST Assured |
-    | 2 | DTOs de **salida** (la referencia serializa la entidad de dominio en la `Response`) | No exponer el modelo interno ni las colecciones perezosas | Cuerpo real: hijos como ids, `switchIds:[]`; sin `LazyInitializationException` |
-    | 3 | DTOs de entrada **planos** + `LocationRequest` (la referencia incrusta value objects + deserializadores a medida) | `Location` no tiene constructor sin-args; así se evitan los deserializadores | Cero deserializadores; Jackson (de)serializó sin `opens` |
-    | 4 | Path params `String` + `Id.withId(...)` (la referencia usa `Id` + `ParamConverter` y `getUuid()`) | Evita la maquinaria del converter; este núcleo expone `Id.getId()`, no `getUuid()` | `GET /router/retrieve/{id}` 200 con el id semilla |
-    | 5 | `Uni<Response>` + `@Blocking` en endpoints que persisten (la referencia no marca `@Blocking`) | Hibernate ORM es bloqueante; en el event loop lanzaría `BlockingOperationNotAllowedException` | Reactor y `@QuarkusTest` verdes; sin excepción de bloqueo |
-    | 6 | Switch/red **en memoria**, sin persistencia (la referencia persiste vía el agregado router y tiene `retrieveSwitch`/output port) | Este núcleo no define persistencia de switch/red (no hay `SwitchManagementH2Adapter`) | `create` efímeros; `add`/`remove` recuperan el edge, mutan y devuelven, sin persistir |
-    | 7 | Sin `DELETE /router/{id}` (la referencia tiene `removeRouter(id)`) | El caso de uso de este núcleo no expone `removeRouter(id)` | Firma de `RouterManagementUseCase` |
-    | 8 | `POST /router/create` funde crear + persistir (mapeo 1:1 daría un `create` efímero y un `persist` que recibiría la entidad completa) | Ergonomía REST: un alta que no guarda devuelve un recurso inexistente | Round-trip `createAndRetrieveRouter` verde |
-    | 9 | Command mode → **server mode** con `Quarkus.run` (patrón del `App.java` de la referencia) | Un servicio HTTP debe quedarse arriba; el `return 0` apagaba el servidor | Proceso vivo tras servir; `router:200 openapi:200 swagger:200` |
+  | # | Decisión | Motivo | Evidencia |
+      |---|----------|--------|-----------|
+  | 1 | La capa `generic` se **promueve** a `rest` (la referencia la reemplaza en el cap. 12); aquí en dos mitades: añadir `rest` (SC1–2), retirar `generic` (SC4) | El REST adapter y el generic hacían el mismo trabajo; mantener ambos sería *passthrough* sin valor | 14 verdes tras el borrado; los caminos e2e quedan cubiertos por los tests REST Assured |
+  | 2 | DTOs de **salida** (la referencia serializa la entidad de dominio en la `Response`) | No exponer el modelo interno ni las colecciones perezosas | Cuerpo real: hijos como ids, `switchIds:[]`; sin `LazyInitializationException` |
+  | 3 | DTOs de entrada **planos** + `LocationRequest` (la referencia incrusta value objects + deserializadores a medida) | `Location` no tiene constructor sin-args; así se evitan los deserializadores | Cero deserializadores; Jackson (de)serializó sin `opens` |
+  | 4 | Path params `String` + `Id.withId(...)` (la referencia usa `Id` + `ParamConverter` y `getUuid()`) | Evita la maquinaria del converter; este núcleo expone `Id.getId()`, no `getUuid()` | `GET /router/retrieve/{id}` 200 con el id semilla |
+  | 5 | `Uni<Response>` + `@Blocking` en endpoints que persisten (la referencia no marca `@Blocking`) | Hibernate ORM es bloqueante; en el event loop lanzaría `BlockingOperationNotAllowedException` | Reactor y `@QuarkusTest` verdes; sin excepción de bloqueo |
+  | 6 | Switch/red **en memoria**, sin persistencia (la referencia persiste vía el agregado router y tiene `retrieveSwitch`/output port) | Este núcleo no define persistencia de switch/red (no hay `SwitchManagementH2Adapter`) | `create` efímeros; `add`/`remove` recuperan el edge, mutan y devuelven, sin persistir |
+  | 7 | Sin `DELETE /router/{id}` (la referencia tiene `removeRouter(id)`) | El caso de uso de este núcleo no expone `removeRouter(id)` | Firma de `RouterManagementUseCase` |
+  | 8 | `POST /router/create` funde crear + persistir (mapeo 1:1 daría un `create` efímero y un `persist` que recibiría la entidad completa) | Ergonomía REST: un alta que no guarda devuelve un recurso inexistente | Round-trip `createAndRetrieveRouter` verde |
+  | 9 | Command mode → **server mode** con `Quarkus.run` (patrón del `App.java` de la referencia) | Un servicio HTTP debe quedarse arriba; el `return 0` apagaba el servidor | Proceso vivo tras servir; `router:200 openapi:200 swagger:200` |
 
 - **Verificación:** `mvn clean install` en verde en todo el reactor — `domain` 19,
   `application` 12 (Cucumber), `framework` 14 (`@QuarkusTest`, 0 skipped: Router REST 4,
@@ -366,3 +366,95 @@ de Git, es el portador autorizado del estado entre sesiones de trabajo.
   la mano de la persistencia reactiva.
 - **Siguiente:** Fase 8 · Persistencia reactiva (Hibernate Reactive): permitirá retirar
   los `@Blocking` y abordar la persistencia del agregado con hijos.
+
+---
+
+## Fase 8 · Persistencia reactiva (Hibernate Reactive)
+
+- **Estado:** ✅ completada
+- **Entregado:**
+    - **SC1 — Frontera de salida reactiva (volteo completo):** `RouterManagementH2Adapter`
+      reescrito con **Hibernate Reactive puro** (`Mutiny.SessionFactory`, sin Panache):
+      `withSession`/`withTransaction` sustituyen a `@Inject EntityManager` + `@Transactional`.
+      `RouterManagementOutputPort` y los métodos `retrieveRouter`/`persistRouter` del caso de
+      uso pasan a devolver `Uni`, propagado por use case → input port → REST adapter;
+      **retirados todos los `@Blocking`** de los tres adapters. La lectura se vuelve
+      **profunda**: `find` + `session.fetch` por niveles (CORE → routers hijos; EDGE →
+      switches → redes), con los fetch de redes serializados. Cambio de base: **H2 (JDBC) →
+      MySQL reactivo** (`quarkus-hibernate-reactive` + `quarkus-reactive-mysql-client`) vía
+      **Dev Services** (Docker prerrequisito). Ids de persistencia como `String` sobre
+      `VARCHAR(36)`. `module-info`: `application +requires io.smallrye.mutiny`; `framework`
+      `−requires jakarta.transaction, io.smallrye.common.annotation` y
+      `+requires hibernate.reactive.core`. Test del output adapter reescrito a reactivo
+      (`UniAsserter`/`@RunOnVertxContext`).
+    - **SC2 — Persistencia profunda del agregado (cascade manual):** `persistRouter` aplana
+      el agregado en orden de dependencia de FK (router → switches → redes; core → hijos) y
+      persiste fila a fila con `transformToUniAndConcatenate` —secuencial— dentro de una única
+      transacción; las asociaciones `@OneToMany` siguen en solo lectura y la relación se
+      escribe por la FK escalar de cada fila (**sin `CascadeType` de JPA**). El mapper asigna
+      `routerParentCoreId` a los routers hijos de un core (self-FK), sin el cual
+      `retrieveRouter` no los reencontraría. Dos tests de round-trip a nivel de adapter (EDGE
+      con switch + red; CORE con edge hijo). Un router sin hijos aplana a una sola fila, así
+      que `/router/create` no cambia. **Salda la deuda del `@OneToMany` sin cascade** arrastrada
+      desde la Fase 4.
+- **Decisiones y hallazgos:**
+    - **Infra y firmas son inseparables.** Hibernate Reactive solo expone API `Uni` (no hay
+      operación bloqueante); en cuanto entra el cliente MySQL reactivo, el `EntityManager`
+      bloqueante se queda sin datasource. El volteo de proveedor y el puerto reactivo van en
+      el mismo SC, por necesidad técnica, no por preferencia.
+    - **La superficie reactiva es menor de lo previsto.** Solo `RouterManagementInputPort`
+      inyecta un puerto de salida; los input ports de switch/red son 100% en memoria. Por eso
+      solo `retrieve`/`persist` se vuelven `Uni` (D3); `create`/`add`/`remove` siguen síncronos.
+    - **Una sesión reactiva no admite operaciones concurrentes — la lección de la fase.** El
+      fetch de redes abanicado en paralelo (`Uni.join().all` sin límite) rompía la sesión
+      (`Illegal pop() with non-matching JdbcValuesSourceProcessingState`); se serializó con
+      `usingConcurrencyOf(1)`. La **misma** restricción rige la escritura: el aplanado se
+      persiste con `Concatenate`, no `Merge`. Con `EntityManager` bloqueante la secuencialidad
+      venía regalada (un hilo, una operación tras otra); con Mutiny hay que imponerla a mano en
+      ambas direcciones. Es la diferencia conceptual más aguda entre el modelo bloqueante y el
+      reactivo.
+    - **El converter de UUID no era viable.** `@Converter(autoApply=true)` excluye los `@Id`
+      (spec JPA) y `@Convert` explícito en `@Id` lo prohíbe Hibernate; con las PK en `binary(16)`
+      nativo y las FK en `varchar(36)` el DDL fallaba por tipos incompatibles. Se resolvió
+      tipando los seis identificadores `*Data` como `String` sobre `VARCHAR(36)`: el dominio
+      conserva `UUID` dentro de su value object `Id` y la conversión a texto vive en el mapper,
+      en la frontera donde ya estaba la traducción.
+    - **La costura JPMS de Hibernate Reactive es frágil.** `hibernate-reactive-core-3.2.11.Final.jar`
+      no trae `module-info.class` ni `Automatic-Module-Name`, así que su nombre de módulo
+      (`hibernate.reactive.core`) deriva del nombre del fichero. **Invierte el hallazgo de la
+      Fase 7** (allí los tres jars de la costura eran módulos explícitos): un renombrado del
+      artefacto rompería el `requires`, y Maven lo advierte explícitamente.
+- **Modernizaciones y desviaciones** (respecto al enfoque de referencia, con evidencia):
+
+  | # | Decisión | Motivo | Evidencia |
+      |---|----------|--------|-----------|
+  | 1 | Hibernate Reactive **puro** (`Mutiny.SessionFactory`), sin Panache (la referencia usa `hibernate-reactive-panache`) | El núcleo mantiene entidades `*Data` a mano + mapper; se adopta el motor reactivo sin Active Record/Repository | Feature list con `hibernate-reactive`/`reactive-mysql-client`/`vertx`, sin panache |
+  | 2 | Puertos reactivos **acotados** a `retrieve`/`persist` (la referencia lleva `Uni` a todo el puerto) | Solo esas dos operaciones tocan persistencia; switch/red son en memoria | 16 verdes sin envolver `create`/`add`/`remove` en `Uni` |
+  | 3 | Ids `*Data` como `String` sobre `VARCHAR(36)`, sin `AttributeConverter` | `autoApply` no alcanza `@Id` (spec) y `@Convert` en `@Id` lo prohíbe Hibernate; `String` cuadra ambos lados de la FK y deja `import.sql` intacto | `Referencing column 'switch_id' ... are incompatible`; `'AttributeConverter' not allowed for attribute 'routerId' annotated '@Id'` |
+  | 4 | Cascade **manual** en el adapter (aplanado + persist secuencial), sin `CascadeType` de JPA (la referencia casca vía Panache) | Mantiene el patrón FK-escalar + asociación read-only sin rediseñar la propiedad de la columna | Round-trip verde: el edge vuelve con switch y red; el core, con su edge hijo por `router_parent_core_id` |
+  | 5 | Fetch y persist **serializados** (`usingConcurrencyOf(1)` / `transformToUniAndConcatenate`) | Una `Mutiny.Session` no admite operaciones concurrentes | `Illegal pop() with non-matching JdbcValuesSourceProcessingState` (resuelto al serializar) |
+  | 6 | `requires hibernate.reactive.core` (módulo **automático por nombre de fichero**) | El jar no trae `module-info.class` ni `Automatic-Module-Name`; eslabón frágil de la costura, invierte el hallazgo de la Fase 7 | `jar --describe-module`: `hibernate.reactive.core@3.2.11.Final automatic`; Maven: `Required filename-based automodules detected` |
+  | 7 | MySQL vía **Dev Services** (Docker prerrequisito); H2 retirado | El cliente reactivo de Vert.x no soporta H2 (JDBC puro) | `Dev Services for default datasource (mysql) started`; la feature list pierde `jdbc-h2`/`agroal`/`narayana-jta` |
+
+- **Verificación:** `mvn -pl framework -am clean test` en verde en todo el reactor — `domain`
+  19, `application` 12 (Cucumber), `framework` **16** (`@QuarkusTest`, 0 skipped: Router REST 4,
+  Switch REST 3, Network REST 3, output adapter reactivo 4 —2 lectura/escritura + 2 round-trip—,
+  OpenAPI 2). Feature list:
+  `[cdi, compose, hibernate-orm, hibernate-reactive, reactive-mysql-client, rest, rest-jackson,
+  smallrye-context-propagation, smallrye-openapi, swagger-ui, vertx]` — entran `hibernate-reactive`,
+  `reactive-mysql-client` y `vertx`; caen `jdbc-h2`, `agroal` y `narayana-jta` (`hibernate-orm`
+  permanece porque Hibernate Reactive se apoya en esa extensión, no porque quede JDBC). MySQL
+  provisionado por Dev Services. Sin un solo `Illegal pop()` en el log tras serializar lectura y
+  escritura.
+- **Deuda conocida que entra en la siguiente fase:**
+    - **Nombres cosméticos:** el paquete `adapters.output.h2` y las clases
+      `RouterManagementH2Adapter`/`RouterH2Mapper` conservan el nombre `h2` aunque la
+      persistencia sea ya MySQL reactivo. El rename (`output.h2 → output.mysql`) se difiere a un
+      `refactor:` propio para no mezclar un renombrado de paquete con el cierre de fase; es
+      puramente cosmético, sin efecto funcional.
+    - **REST `add`/`remove` siguen sin persistir:** la escritura profunda existe en el output
+      adapter y está probada por round-trip, pero la superficie REST no la usa aún; `switch/add`,
+      `network/add` y los `remove` mutan el agregado en memoria y lo devuelven, sin durabilidad.
+      Hacerlos durables es un cambio de comportamiento (no de persistencia) que queda para más
+      adelante.
+- **Siguiente:** Fase 9 · Contenedores y despliegue (Docker / Kubernetes).

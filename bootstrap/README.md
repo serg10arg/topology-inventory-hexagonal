@@ -20,7 +20,7 @@ de runtime de la persistencia.
 |---|---|---|
 | **Punto de entrada Quarkus** | La clase `@QuarkusMain` que arranca el contenedor y lo mantiene sirviendo HTTP. | `Application` (`main` → `Quarkus.run(args)`) |
 | **Descriptor del módulo** | Declara la dependencia con los tres hexágonos y el runtime de Quarkus. | `module-info.java` (`requires domain, application, framework, quarkus.core`) |
-| **Configuración de runtime** | Datasource H2 + Hibernate ORM y seed de la base. | `application.properties`, `import.sql` |
+| **Configuración de runtime** | Datasource **reactivo MySQL** + Hibernate Reactive y seed de la base. | `application.properties`, `import.sql` |
 
 ## ¿Por qué se implementó así?
 
@@ -41,24 +41,31 @@ de runtime de la persistencia.
 ## ¿Cómo se implementó?
 
 - Como un **módulo Java** (JPMS) que `requires` a `domain`, `application`,
-  `framework` y `quarkus.core`. `framework` aporta transitivamente Hibernate ORM, H2 y
-  RESTEasy Reactive en runtime.
+  `framework` y `quarkus.core`. `framework` aporta transitivamente Hibernate Reactive,
+  el cliente MySQL reactivo y RESTEasy Reactive en runtime.
 - La clase `Application`, anotada `@QuarkusMain`, arranca el contenedor con
   `Quarkus.run(args)` en su `main`: en **server mode**, Quarkus enciende Arc, el
-  datasource, Hibernate, el seed y el servidor HTTP de RESTEasy Reactive, y **bloquea
-  sirviendo** hasta el shutdown. La app dejó de ser un programa que corre y termina.
+  datasource reactivo, Hibernate Reactive, el seed y el servidor HTTP de RESTEasy
+  Reactive, y **bloquea sirviendo** hasta el shutdown. La app dejó de ser un programa
+  que corre y termina.
 - El cableado es **CDI de punta a punta**, resuelto por Arc bajo demanda en cada
   petición: el REST adapter inyecta el caso de uso, que inyecta el output adapter, que
-  recibe su `EntityManager` por `@Inject`. No queda ningún `new` de colaboradores ni
-  `ServiceLoader` en la cadena; `Application` ya no inyecta nada (por eso `bootstrap`
+  recibe su `Mutiny.SessionFactory` por `@Inject`. No queda ningún `new` de colaboradores
+  ni `ServiceLoader` en la cadena; `Application` ya no inyecta nada (por eso `bootstrap`
   dejó de `requires jakarta.inject`).
+- La **configuración de runtime** fija el datasource reactivo (`db-kind=mysql`,
+  `reactive=true`), la generación de esquema (`schema-management.strategy=drop-and-create`)
+  y el seed (`sql-load-script=import.sql`). En dev/test no se fija la url: **Dev Services**
+  provisiona un contenedor MySQL (requiere Docker). En perfil `prod` se usa
+  `%prod.quarkus.datasource.reactive.url` apuntando a un MySQL real.
 
 | Tecnología | Rol en el módulo |
 |---|---|
 | Java 21 | Lenguaje base |
 | JPMS (Java Modules) | Declara la dependencia con los tres hexágonos y `quarkus.core`; cierra el grafo de módulos |
-| Quarkus 3.33 | Runtime cloud-native: arranca el contenedor (Arc), gestiona la inyección y la persistencia |
-| Hibernate ORM (vía Quarkus) | Proveedor JPA configurado en `application.properties` |
+| Quarkus 3.33 | Runtime cloud-native: arranca el contenedor (Arc), gestiona la inyección y la persistencia reactiva |
+| Hibernate Reactive (vía Quarkus) | Proveedor de persistencia reactiva configurado en `application.properties` |
+| Cliente MySQL reactivo + Dev Services | Datasource no bloqueante; contenedor MySQL en dev/test (requiere Docker) |
 | Maven | Construcción multi-módulo; `quarkus-maven-plugin` produce la app |
 
 ## ¿Cuál es su responsabilidad?
@@ -77,9 +84,11 @@ sobre Quarkus, sin añadir reglas ni tecnología de negocio propias.
 
 Implementado y operativo bajo Quarkus en **server mode**. `Application` arranca el
 contenedor con `Quarkus.run` y se mantiene escuchando en el puerto 8080: Arc cablea la
-cadena de beans (REST adapter → caso de uso → output adapter → `EntityManager`) bajo
-demanda para atender cada petición. El contrato de la API está en `/q/openapi` y la UI
-en `/q/swagger-ui/`. La base H2 es en memoria y vive mientras viva el proceso.
+cadena de beans (REST adapter → caso de uso → output adapter → `Mutiny.SessionFactory`)
+bajo demanda para atender cada petición, componiendo `Uni` de punta a punta. El contrato
+de la API está en `/q/openapi` y la UI en `/q/swagger-ui/`. La base es **MySQL**:
+provisionada en contenedor por Dev Services en dev/test (requiere Docker), o un MySQL real
+en perfil `prod`.
 
 ## ¿Cómo se relaciona con el proyecto?
 
@@ -94,7 +103,7 @@ Se sitúa por encima de los tres hexágonos; es el único que los conoce a todos
 
 - `requires` a los tres hexágonos y a `quarkus.core`, y **ensambla** sus adapters.
 - Al arrancar el contenedor, **Arc descubre e inyecta** la cadena de beans; el
-  output adapter recibe su `EntityManager` gestionado por `@Inject`.
+  output adapter recibe su `Mutiny.SessionFactory` por `@Inject`.
 
 > Para la visión global del proyecto (arquitectura completa, stack y estado),
 > consulta el **README raíz** del repositorio.
