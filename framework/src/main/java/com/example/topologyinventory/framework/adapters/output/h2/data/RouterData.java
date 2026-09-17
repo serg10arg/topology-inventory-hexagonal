@@ -23,8 +23,9 @@ import java.util.List;
  * asociaciones {@link OneToMany} comparten la FK escalar ya mapeada, en solo lectura
  * ({@code insertable=false, updatable=false}), de modo que Hibernate no genere ni tabla de
  * join ni columnas duplicadas. Bajo Hibernate Reactive esas colecciones se navegan de forma
- * explícita ({@code session.fetch}), nunca perezosamente en el hilo del mapper. La
- * persistencia es solo por la raíz; las colecciones aún no se cascan (deuda que salda SC2).
+ * explícita ({@code session.fetch}), nunca perezosamente en el hilo del mapper. Al escribir,
+ * el adapter persiste cada fila del agregado por separado y la relación la lleva la FK escalar
+ * (cascade manual, decisión D6); no se usa {@code CascadeType}.
  */
 @Builder
 @Getter

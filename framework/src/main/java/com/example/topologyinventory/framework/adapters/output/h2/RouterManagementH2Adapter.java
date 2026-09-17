@@ -7,11 +7,13 @@ import com.example.topologyinventory.framework.adapters.output.h2.data.RouterDat
 import com.example.topologyinventory.framework.adapters.output.h2.data.RouterTypeData;
 import com.example.topologyinventory.framework.adapters.output.h2.data.SwitchData;
 import com.example.topologyinventory.framework.adapters.output.h2.mappers.RouterH2Mapper;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.hibernate.reactive.mutiny.Mutiny;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,25 +23,26 @@ import java.util.List;
  * base de datos.
  *
  * <p><b>Cableado (CDI).</b> Bean {@code @ApplicationScoped} descubierto por Jandex e inyectado
- * donde {@code RouterManagementInputPort} declara {@link RouterManagementOutputPort}. Al pasar a
- * reactivo, dos pilares de la era bloqueante cambian:
+ * donde {@code RouterManagementInputPort} declara {@link RouterManagementOutputPort}. Bajo
+ * Hibernate Reactive, {@code @Inject EntityManager} → {@code @Inject Mutiny.SessionFactory} y
+ * {@code @Transactional} → {@code withSession}/{@code withTransaction}.
+ *
+ * <p><b>Simetría lectura/escritura profundas (Fase 8).</b> El agregado se recorre entero en ambas
+ * direcciones, y ambas travesías comparten la misma restricción: una {@link Mutiny.Session}
+ * <em>no admite operaciones concurrentes</em>.
  * <ul>
- *   <li>{@code @Inject EntityManager} → {@code @Inject Mutiny.SessionFactory}: se abre una sesión
- *       reactiva por operación con {@code withSession}/{@code withTransaction}.</li>
- *   <li>{@code @Transactional} → {@code withTransaction(...)}: la transacción se demarca
- *       programáticamente dentro del lambda; desaparece la JTA bloqueante (Narayana).</li>
+ *   <li><b>Lectura</b> ({@code retrieveRouter}): {@code find} + {@code session.fetch} por niveles
+ *       (CORE → routers hijos; EDGE → switches → redes), con los fetch de redes serializados
+ *       ({@code usingConcurrencyOf(1)}).</li>
+ *   <li><b>Escritura</b> ({@code persistRouter}): se aplana el árbol {@code *Data} en orden de
+ *       dependencia de FK (padre antes que hijo) y se persiste fila a fila con
+ *       {@code transformToUniAndConcatenate} —secuencial— dentro de una única transacción. Esto
+ *       es <b>cascade manual</b> (decisión D6): las asociaciones {@code @OneToMany} siguen en
+ *       solo lectura y la relación se materializa escribiendo la FK escalar de cada fila; no se
+ *       usa {@code CascadeType} de JPA.</li>
  * </ul>
- *
- * <p><b>Materialización profunda del agregado (lectura).</b> Bajo Hibernate Reactive las
- * colecciones {@code @OneToMany} no se navegan de forma síncrona: hay que iniciarlas con
- * {@code session.fetch}. Por eso {@code retrieveRouter} no es un {@code find} plano, sino un
- * {@code find} seguido de fetch dependiente del tipo: un CORE materializa sus routers hijos (los
- * ids bastan para la respuesta superficial); un EDGE materializa sus switches y, por cada uno,
- * sus redes (dos niveles), porque el {@code SwitchResponse} serializa las redes completas.
- *
- * <p><b>Escritura sin cascade (SC1).</b> {@code persistRouter} inserta solo la fila raíz: las
- * colecciones {@code @OneToMany} son de solo lectura, así que Hibernate no escribe hijos.
- * Persistir el agregado con hijos (cascade) es la deuda que salda SC2.
+ * Un router recién creado sin hijos aplana a una lista de un solo elemento, así que la ruta
+ * {@code /router/create} se comporta igual que en SC1.
  */
 @ApplicationScoped
 public class RouterManagementH2Adapter implements RouterManagementOutputPort {
@@ -73,7 +76,14 @@ public class RouterManagementH2Adapter implements RouterManagementOutputPort {
     @Override
     public Uni<Router> persistRouter(Router router) {
         var routerData = RouterH2Mapper.routerDomainToData(router);
-        return sessionFactory.withTransaction((session, tx) -> session.persist(routerData))
+        List<Object> aggregate = flatten(routerData);
+        return sessionFactory.withTransaction((session, tx) ->
+                        Multi.createFrom().iterable(aggregate)
+                                // Secuencial a propósito: Concatenate, no Merge. Persistir en
+                                // paralelo sobre la misma sesión reactiva rompería su máquina de
+                                // estados, igual que el fetch en paralelo la rompía en la lectura.
+                                .onItem().transformToUniAndConcatenate(session::persist)
+                                .onItem().ignoreAsUni())
                 .replaceWith(router);
     }
 
@@ -96,5 +106,41 @@ public class RouterManagementH2Adapter implements RouterManagementOutputPort {
                 .map(switchData -> session.fetch(switchData.getNetworks()).replaceWith(switchData))
                 .toList();
         return Uni.join().all(perSwitch).usingConcurrencyOf(1).andCollectFailures();
+    }
+
+    /**
+     * Aplana el árbol del agregado en una lista de entidades {@code *Data} en orden de dependencia
+     * de clave foránea: cada fila referida aparece antes que la que la referencia. Es la travesía
+     * de escritura, espejo de la de lectura.
+     *
+     * @param routerData raíz del agregado ya traducida por el mapper
+     * @return las entidades a persistir, padre antes que hijo
+     */
+    private List<Object> flatten(RouterData routerData) {
+        List<Object> ordered = new ArrayList<>();
+        collect(routerData, ordered);
+        return ordered;
+    }
+
+    /**
+     * Recorre el árbol en profundidad, padre primero, acumulando entidades en {@code ordered}:
+     * el router antes que sus switches, cada switch antes que sus redes, y un core antes que sus
+     * routers hijos (que a su vez se recorren igual).
+     */
+    private void collect(RouterData routerData, List<Object> ordered) {
+        ordered.add(routerData);
+        if (routerData.getSwitches() != null) {
+            for (SwitchData switchData : routerData.getSwitches()) {
+                ordered.add(switchData);
+                if (switchData.getNetworks() != null) {
+                    ordered.addAll(switchData.getNetworks());
+                }
+            }
+        }
+        if (routerData.getRouters() != null) {
+            for (RouterData child : routerData.getRouters()) {
+                collect(child, ordered);
+            }
+        }
     }
 }

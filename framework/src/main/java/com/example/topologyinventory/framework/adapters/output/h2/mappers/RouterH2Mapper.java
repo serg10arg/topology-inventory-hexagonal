@@ -23,7 +23,12 @@ import java.util.*;
  *   <li>{@link #edgeWithSwitches} — un EDGE con sus switches ya fetchados, cada uno con sus redes
  *       ya fetchadas.</li>
  * </ul>
- * La dirección dominio → data ({@link #routerDomainToData}) es en memoria y no cambia.
+ *
+ * <p><b>Escritura profunda (SC2).</b> En dominio → data, un router hijo de un core recibe ahora su
+ * {@code routerParentCoreId} (el id del core): sin ese escalar self-FK, la fila del hijo se
+ * persistiría suelta y {@code retrieveRouter} —que reencuentra los hijos leyendo
+ * {@code router_parent_core_id}— nunca los volvería a ver. Las FK de switch ({@code routerId}) y
+ * de red ({@code switchId}) ya se rellenaban desde SC1.
  */
 public class RouterH2Mapper {
 
@@ -93,12 +98,23 @@ public class RouterH2Mapper {
     }
 
     // ---------------------------------------------------------------------
-    // domain -> data (en memoria, sin cambios)
+    // domain -> data (en memoria)
     // ---------------------------------------------------------------------
 
+    /** Traduce un router (raíz del agregado) a su modelo de persistencia, con sus hijos. */
     public static RouterData routerDomainToData(Router router) {
+        return routerDomainToData(router, null);
+    }
+
+    /**
+     * Traduce un router a {@code *Data} asignándole {@code parentCoreId} como self-FK. Es
+     * {@code null} para la raíz y el id del core para cada router hijo, de modo que la fila del
+     * hijo enlace con su core al persistirse.
+     */
+    private static RouterData routerDomainToData(Router router, String parentCoreId) {
         var routerData = RouterData.builder()
                 .routerId(router.getId().getId().toString())
+                .routerParentCoreId(parentCoreId)
                 .routerVendor(VendorData.valueOf(router.getVendor().toString()))
                 .routerModel(ModelData.valueOf(router.getModel().toString()))
                 .ip(IPData.fromAddress(router.getIp().getIpAddress()))
@@ -108,7 +124,7 @@ public class RouterH2Mapper {
 
         if (router.getRouterType().equals(RouterType.CORE)) {
             var coreRouter = (CoreRouter) router;
-            routerData.setRouters(getRoutersFromDomain(coreRouter.getRouters()));
+            routerData.setRouters(getRoutersFromDomain(coreRouter.getRouters(), routerData.getRouterId()));
         } else {
             var edgeRouter = (EdgeRouter) router;
             routerData.setSwitches(
@@ -131,7 +147,7 @@ public class RouterH2Mapper {
     }
 
     // ---------------------------------------------------------------------
-    // helpers de value objects (sin cambios)
+    // helpers de value objects
     // ---------------------------------------------------------------------
 
     public static Location locationDataToLocation(LocationData locationData) {
@@ -158,10 +174,10 @@ public class RouterH2Mapper {
                 .build();
     }
 
-    private static List<RouterData> getRoutersFromDomain(Map<Id, Router> routers) {
+    private static List<RouterData> getRoutersFromDomain(Map<Id, Router> routers, String parentCoreId) {
         List<RouterData> routerDataList = new ArrayList<>();
         if (routers != null) {
-            routers.values().forEach(router -> routerDataList.add(routerDomainToData(router)));
+            routers.values().forEach(router -> routerDataList.add(routerDomainToData(router, parentCoreId)));
         }
         return routerDataList;
     }
